@@ -1,0 +1,22 @@
+### Some Helpful Imports ###
+
+# pex ~= 2.25 # Python EXecutable Builder
+# uvloop ~= 0.21 # Replaces the asyncio event loop w/ libuv
+# tqdm ~= 4.66 # Progress Meter
+# loguru ~= 0.7 # Quick Logging
+# PyYAML ~= 6.0 # YAML Parsing
+# orjson ~= 3.10 # Faster JSON Parsing
+# cryptography ~= 43.0 # Cryptography Primitives Library
+# cffi ~= 1.17 # C Foreign Function Interface
+# blake3 ~= 1.0 # BLAKE3 Hashing
+# requests ~= 2.32 # Synchronous HTTP Client/Server
+# aiohttp ~= 3.10 # Async HTTP Client/Server
+# aiofiles ~= 24.1 # Async File I/O (Thread Pooling)
+# psycopg[binary] ~= 3.2 # PostgreSQL Async Driver
+# networkx ~= 3.4 # Graph Library
+# numpy ~= 2.1 # Numerical Computing
+# cupy ~= 13.3 # Numerical Computing
+# cupy-cuda12x ~= 13.3 # GPU Numerical Computing (CUDA 12.x)
+# cupy-cuda11x ~= 13.3 # GPU Numerical Computing (CUDA 11.x)
+# cupy-rocm-5-0 ~= 13.3 # GPU Numerical Computing (ROCm 5.0)
+# cupy-rocm-4-13 ~= 13.3 # GPU Numerical Computing (ROCm 4.13)
