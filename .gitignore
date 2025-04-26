@@ -3,3 +3,4 @@
 .user.env
 __pycache__
 *.OLD
+**/CLAUDE.local.md
