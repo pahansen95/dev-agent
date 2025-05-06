@@ -27,10 +27,7 @@ Dependencies
 
 from __future__ import annotations
 
-import json
-import signal
-import subprocess
-import sys
+import sys, os, subprocess, signal, json
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -47,7 +44,7 @@ except ImportError:  # pragma: no cover
 # --------------------------------------------------------------------------- #
 
 # All per‑kernel data are kept here, relative to the project’s root.
-_KERN_DIR = Path.cwd() / ".kernels"
+_KERN_DIR = Path.cwd() / ".devagent"
 _KERN_DIR.mkdir(exist_ok=True)
 
 
@@ -98,7 +95,7 @@ class KernelController:
     """Create **and start** a new kernel called *name*.
 
     A directory ``.kernels/<name>/`` is created.  The kernel's connection
-    file is copied into that directory and metadata (PID, file name) is
+    file is copied into that directory and metadata is
     stored in ``meta.json``.
     """
     kdir = _KERN_DIR / name
@@ -108,7 +105,8 @@ class KernelController:
     kdir.mkdir(parents=True)
 
     km = KernelManager()
-    km.start_kernel(extra_arguments=extra_argv or [], env=env)
+    km_env = dict(os.environ.copy()) if env is None else env
+    km.start_kernel(extra_arguments=extra_argv or [], env=km_env)
     conn_file = Path(km.connection_file)
 
     # Copy the connection file so it is colocated with the metadata
@@ -116,7 +114,6 @@ class KernelController:
     local_conn.write_text(conn_file.read_text())
 
     meta = {
-      "pid": km.kernel.pid if km.is_alive() else None,
       "connection_file": local_conn.name,
     }
     _meta_path(name).write_text(json.dumps(meta, indent=2))

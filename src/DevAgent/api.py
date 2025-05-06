@@ -114,9 +114,26 @@ class InterpreterAPI:
 
     return output, error
 
+
   def connect_console(self, name: str) -> subprocess.Popen[str]:
     """Spawn a live Jupyter console attached to kernel `name`."""
     return cli_connect(name)
+
+
+  def get_kernel_info(self, name: str) -> dict:
+    """
+    Retrieve metadata for a given kernel.
+    Returns a dict containing the kernel's PID, connection_file, and any HTTP info.
+    """
+    # Read persisted metadata from the controller
+    return self._ctrl.read_kernel(name)
+
+  def delete_kernel(self, name: str, missing_ok: bool = False) -> None:
+    """
+    Delete a kernel by name: shuts it down (if running) and removes its metadata directory.
+    """
+    # Delegate deletion to the controller
+    self._ctrl.delete_kernel(name)
 
 ### The Dev Agent
 

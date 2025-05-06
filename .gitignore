@@ -1,6 +1,7 @@
 .cache
 .venv
 .user.env
+.devagent/
 __pycache__
 *.OLD
 .pytest_cache

@@ -76,8 +76,9 @@ def handle_interpreter(
 ):
   from DevAgent.interpreter import KernelController
   api  = InterpreterAPI(KernelController())
-  op   = pop_arg('operation')  # e.g. "create","stop","restart","list","execute","connect"
-  name = pop_arg('NAME') if op in ('create','stop','restart','execute','connect') else None
+  op = pop_arg('operation')  # e.g. "create","stop","restart","list","execute","connect","info","delete"
+  operations_requiring_name = {'create', 'start', 'stop', 'restart', 'execute', 'connect', 'info', 'delete'}
+  name = pop_arg('NAME') if op in operations_requiring_name else None
 
   match op:
     case 'create' | 'start':
@@ -95,17 +96,27 @@ def handle_interpreter(
       kernels = api.list_kernels()
       stdout.write("\n".join(kernels) + "\n")
     case 'execute':
-      code    = kwargs.get('code') or ''.join(remainder)
+      code = kwargs.get('code') or ''.join(remainder)
       out, err = api.execute(name,
-                              code,
-                              transport=kwargs.get('transport','zmq'),
-                              timeout=float(kwargs.get('timeout','1.0')))
+                            code,
+                            transport=kwargs.get('transport', 'zmq'),
+                            timeout=float(kwargs.get('timeout', '1.0')))
       stdout.write(out)
       if err:
         stderr.write(err)
     case 'connect':
       proc = api.connect_console(name)
       proc.wait()
+    case 'info':
+      # Get detailed information about a kernel
+      kernel_info = api.get_kernel_info(name)
+      json.dump(kernel_info, stdout, indent=2)
+      stdout.write('\n')
+    case 'delete':
+      # Delete a kernel (shutdown if running and remove metadata)
+      missing_ok = bool(kwargs.get('missing_ok', False))
+      api.delete_kernel(name, missing_ok=missing_ok)
+      stdout.write(f"Kernel '{name}' deleted\n")
     case _:
       raise E(f"Unknown interpreter operation: {op}")
 
