@@ -1,3 +1,18 @@
+
+networkx ~= 3.4 # Graph Library
+tqdm ~= 4.66 # Progress Meter
+
+### REPL
+# Core IPython/Jupyter kernel dependencies
+jupyter_client ~= 8.6
+ipykernel ~= 6.29
+# Optional HTTP/WebSocket transport support
+jupyter-kernel-client ~= 0.6
+# CLI console frontend
+jupyter-console ~= 6.6
+# Enhanced prompt support in IPython REPL
+prompt-toolkit ~= 3.0
+
 ### Some Helpful Imports ###
 
 # pex ~= 2.25 # Python EXecutable Builder
@@ -13,7 +28,6 @@
 # aiohttp ~= 3.10 # Async HTTP Client/Server
 # aiofiles ~= 24.1 # Async File I/O (Thread Pooling)
 # psycopg[binary] ~= 3.2 # PostgreSQL Async Driver
-# networkx ~= 3.4 # Graph Library
 # numpy ~= 2.1 # Numerical Computing
 # cupy ~= 13.3 # Numerical Computing
 # cupy-cuda12x ~= 13.3 # GPU Numerical Computing (CUDA 12.x)

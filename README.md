@@ -48,11 +48,15 @@ We keep the layout of the source code simple following these three rules:
 2. Refactor out core functionality & external utilities
 3. A single control surface can be exposed in multiple ways (CLI, HTTP, etc...)
 
-When writing code:
+When writing code, follow these directive, guidelines, and patterns:
 
 - K.I.S.S: Favor plain, repetitive and/or explicit code over metaprogramming, templating and/or dynamic code. Use syntactic sugar where it creates clarity. Make code readable.
-- Be declarative: the code should describe outcomes; liberally use assertions to frame your expectation of external state & program behaviors; Be wary of implicit behaviors.
+- Be declarative: the code should describe outcomes; liberally use assertions to frame your expectation of external state & program behaviors; Be wary of implicit behaviors; use principles of Domain-driven Design.
 - Use Types & Interfaces: Constrain the system you are working with by modeling it's scope & functionality through Types & Interfaces.
 - Encode Knowledge: Make the code self documenting; otherwise include comments & document inline with the code. Add documentation to elucidate contextual motives for certain code.
 - Fail Fast: Don't try to accommodate minority edge cases, just throw errors early & often. Raise specific exception types with descriptive & contextual error messages.
 - Be pragmatic: Favor specialization over generalization; repeat yourself if it's quicker; don't get caught up managing the hierarchical relationships in your code.
+- Use dataclasses over regular python classes, except in cases where a regular class is simpler.
+- Assume & design for immutability; explicitly indicate mutable types & variables.
+- "Any" (or lack of) Type hints are a code smell; constrain the behavior of code.
+- Use Protocols (ie. Structural Typing) when exposing external/public interfaces; unless the type is universal.
