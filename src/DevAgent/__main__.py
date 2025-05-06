@@ -90,7 +90,6 @@ def handle_interpreter(
     case 'create':
       # Parse more granular options
       replace_existing = bool(kwargs.get('replace', False))
-      autostart = bool(kwargs.get('autostart', True))
       extra_args = kwargs.get('args').split(',') if 'args' in kwargs else None
       
       api.create_kernel(
@@ -98,11 +97,8 @@ def handle_interpreter(
         extra_args=extra_args,
         env=None,  # We could parse env vars from kwargs in the future
         replace_existing=replace_existing,
-        autostart=autostart
       )
-      
-      status = "started" if autostart else "created but not started"
-      stdout.write(f"Kernel '{name}' {status}\n")
+      stdout.write(f"Kernel '{name}' created\n")
     
     case 'start':
       api.start_kernel(name)

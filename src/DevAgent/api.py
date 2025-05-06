@@ -79,10 +79,9 @@ class InterpreterAPI:
     extra_args: List[str] | None = None,
     env: Dict[str, str] | None = None,
     replace_existing: bool = False,
-    autostart: bool = True
   ) -> None:
     """
-    Create & optionally start a new Jupyter kernel named `name`.
+    Create, but do no start, a new Interpreter session named `name`.
     
     Parameters
     ----------
@@ -94,10 +93,8 @@ class InterpreterAPI:
         Environment variables for the kernel
     replace_existing : bool
         If True, replace existing kernel with this name
-    autostart : bool
-        If True, start the kernel immediately
     """
-    self._ctrl.create_kernel(name, extra_args, env, replace_existing, autostart)
+    self._ctrl.create_kernel(name, extra_args, env, replace_existing)
 
   def start_kernel(self, name: str) -> None:
     """

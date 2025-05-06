@@ -626,7 +626,6 @@ class KernelController:
     extra_argv: Optional[List[str]] = None,
     env: Optional[Dict[str, str]] = None,
     replace_existing: bool = False,
-    autostart: bool = True,
   ) -> None:
     """
     Create a new kernel session and start the kernel process.
@@ -655,24 +654,7 @@ class KernelController:
     
     # Create metadata directory
     self.metadata_store.create_session(name)
-    
-    if autostart:
-      try:
-        # Start the kernel process
-        km, _ = self.process_manager.start_kernel(
-          extra_argv=extra_argv,
-          env=env
-        )
         
-        # Update metadata and cache
-        self._update_connection_metadata(name, km)
-        self._kernel_managers[name] = km
-        
-      except Exception as e:
-        # Clean up metadata if process creation fails
-        self.metadata_store.delete_session(name, missing_ok=True)
-        raise e
-    
   def read_kernel(self, name: str) -> Dict[str, Any]:
     """
     Read kernel metadata.
