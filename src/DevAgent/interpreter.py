@@ -355,14 +355,20 @@ class KernelLifecycleManager:
     tuple[KernelManager, Path]
         The kernel manager and path to the connection file
     """
-    # Start new kernel manager
-    km = KernelManager(connection_file=str(connection_file) if connection_file else None)
+    # Start new kernel manager with or without connection file
+    if connection_file is not None:
+      km = KernelManager(connection_file=str(connection_file))
+    else:
+      # Let KernelManager generate its own connection file
+      km = KernelManager()
+    
+    # Setup environment and start kernel
     km_env = dict(os.environ.copy()) if env is None else env
     km.start_kernel(extra_arguments=extra_argv or [], env=km_env)
     
     # Return the manager and connection file path
-    return km, Path(km.connection_file)
-  
+    return km, Path(km.connection_file)  
+
   def connect_to_kernel(self, connection_file: Path) -> KernelManager:
     """
     Connect to an existing kernel using its connection file.

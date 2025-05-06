@@ -74,49 +74,90 @@ def handle_interpreter(
   remainder: deque[str],
   E: type,
 ):
+  """
+  Handle interpreter operations through the CLI.
+  
+  This function parses arguments and flags for the `interpreter` subcommand
+  and delegates to the appropriate InterpreterAPI methods.
+  """
   from DevAgent.interpreter import KernelController
-  api  = InterpreterAPI(KernelController())
-  op = pop_arg('operation')  # e.g. "create","stop","restart","list","execute","connect","info","delete"
+  api = InterpreterAPI(KernelController())
+  op = pop_arg('operation')  # e.g. "create","start","stop","restart","list","execute","connect","info","delete"
   operations_requiring_name = {'create', 'start', 'stop', 'restart', 'execute', 'connect', 'info', 'delete'}
   name = pop_arg('NAME') if op in operations_requiring_name else None
 
   match op:
-    case 'create' | 'start':
-      api.start_kernel(name,
-                        extra_args=kwargs.get('args').split(',') if 'args' in kwargs else None,
-                        env=None)
+    case 'create':
+      # Parse more granular options
+      replace_existing = bool(kwargs.get('replace', False))
+      autostart = bool(kwargs.get('autostart', True))
+      extra_args = kwargs.get('args').split(',') if 'args' in kwargs else None
+      
+      api.create_kernel(
+        name,
+        extra_args=extra_args,
+        env=None,  # We could parse env vars from kwargs in the future
+        replace_existing=replace_existing,
+        autostart=autostart
+      )
+      
+      status = "started" if autostart else "created but not started"
+      stdout.write(f"Kernel '{name}' {status}\n")
+    
+    case 'start':
+      api.start_kernel(name)
       stdout.write(f"Kernel '{name}' started\n")
+    
     case 'stop':
-      api.stop_kernel(name, missing_ok=bool(kwargs.get('missing_ok', False)))
+      missing_ok = bool(kwargs.get('missing_ok', False))
+      api.stop_kernel(name, missing_ok=missing_ok)
       stdout.write(f"Kernel '{name}' stopped\n")
+    
     case 'restart':
       api.restart_kernel(name)
       stdout.write(f"Kernel '{name}' restarted\n")
+    
     case 'list':
       kernels = api.list_kernels()
-      stdout.write("\n".join(kernels) + "\n")
+      if not kernels:
+        stdout.write("No kernels found\n")
+      else:
+        # Enhanced listing with runtime status
+        stdout.write("Available kernels:\n")
+        for kernel in kernels:
+          status = "running" if api.is_kernel_running(kernel) else "stopped"
+          stdout.write(f"  {kernel} ({status})\n")
+    
     case 'execute':
+      # Get code from either --code flag or remainder arguments
       code = kwargs.get('code') or ''.join(remainder)
-      out, err = api.execute(name,
-                            code,
-                            transport=kwargs.get('transport', 'zmq'),
-                            timeout=float(kwargs.get('timeout', '1.0')))
+      if not code.strip():
+        raise E("No code provided to execute")
+        
+      transport = kwargs.get('transport', 'zmq')
+      timeout = float(kwargs.get('timeout', '1.0'))
+      
+      out, err = api.execute(name, code, transport=transport, timeout=timeout)
       stdout.write(out)
       if err:
         stderr.write(err)
+    
     case 'connect':
       proc = api.connect_console(name)
       proc.wait()
+    
     case 'info':
       # Get detailed information about a kernel
       kernel_info = api.get_kernel_info(name)
       json.dump(kernel_info, stdout, indent=2)
       stdout.write('\n')
+    
     case 'delete':
       # Delete a kernel (shutdown if running and remove metadata)
       missing_ok = bool(kwargs.get('missing_ok', False))
       api.delete_kernel(name, missing_ok=missing_ok)
       stdout.write(f"Kernel '{name}' deleted\n")
+    
     case _:
       raise E(f"Unknown interpreter operation: {op}")
 

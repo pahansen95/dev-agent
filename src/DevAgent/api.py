@@ -1,13 +1,14 @@
 """
-
 The Dev Agent's API
 
+Provides a clean interface to the ontology graph and kernel management.
 """
 
-from .ontology import OntologyGraph, Node
+from .ontology import OntologyGraph, Node, Stage
 from .interpreter import KernelController, cli_connect, get_client
 from jupyter_client import BlockingKernelClient
 import subprocess
+from typing import Dict, List, Any, Optional, Tuple
 
 class OntologyAPI:
   """Python API for ontology graph operations."""
@@ -43,7 +44,12 @@ class OntologyAPI:
     """Add a node to the graph."""
     if meta is None:
       meta = {}
-    graph.add_node(Node(nid, label, kind, meta))
+    # Handling for kind should now map to proper Stage enums when appropriate
+    if hasattr(Stage, kind.upper()):
+      stage = getattr(Stage, kind.upper())
+      graph.add_node(Node(nid, label, stage, set(), meta))
+    else:
+      graph.add_node(Node(nid, label, Stage.INTENT, set(), meta))
 
   @staticmethod
   def add_edge(
@@ -55,35 +61,105 @@ class OntologyAPI:
     """Add an edge to the graph."""
     graph.add_edge(src, rel, dst)
 
+
 class InterpreterAPI:
   """
-  A thin wrapper around KernelController and client helpers,
-  with a single Controller instance that you supply.
+  A thin wrapper around KernelController providing a consistent interface
+  for kernel management operations.
+  
+  This class bridges the CLI layer with the core kernel management functionality.
   """
 
   def __init__(self, controller: KernelController):
     self._ctrl = controller
 
-  def start_kernel(
+  def create_kernel(
     self,
     name: str,
-    extra_args: list[str] | None = None,
-    env: dict[str, str] | None = None
+    extra_args: List[str] | None = None,
+    env: Dict[str, str] | None = None,
+    replace_existing: bool = False,
+    autostart: bool = True
   ) -> None:
-    """Create & start a new Jupyter kernel called `name`."""
-    self._ctrl.create_kernel(name, extra_args, env)
+    """
+    Create & optionally start a new Jupyter kernel named `name`.
+    
+    Parameters
+    ----------
+    name : str
+        Kernel identifier
+    extra_args : List[str], optional
+        Additional arguments for the kernel
+    env : Dict[str, str], optional
+        Environment variables for the kernel
+    replace_existing : bool
+        If True, replace existing kernel with this name
+    autostart : bool
+        If True, start the kernel immediately
+    """
+    self._ctrl.create_kernel(name, extra_args, env, replace_existing, autostart)
+
+  def start_kernel(self, name: str) -> None:
+    """
+    Start an existing but non-running kernel.
+    
+    Parameters
+    ----------
+    name : str
+        Kernel identifier
+    """
+    self._ctrl.start_kernel(name)
 
   def stop_kernel(self, name: str, missing_ok: bool = False) -> None:
-    """Shutdown kernel `name` (no-op if missing_ok and it didn’t exist)."""
+    """
+    Shutdown kernel `name`.
+    
+    Parameters
+    ----------
+    name : str
+        Kernel identifier
+    missing_ok : bool
+        If True, don't raise error if kernel doesn't exist
+    """
     self._ctrl.stop_kernel(name, missing_ok=missing_ok)
 
   def restart_kernel(self, name: str) -> None:
-    """Restart an existing kernel by name."""
+    """
+    Restart an existing kernel.
+    
+    Parameters
+    ----------
+    name : str
+        Kernel identifier
+    """
     self._ctrl.restart_kernel(name)
 
-  def list_kernels(self) -> list[str]:
-    """Return all known kernel names."""
+  def list_kernels(self) -> List[str]:
+    """
+    Return all known kernel names.
+    
+    Returns
+    -------
+    List[str]
+        List of kernel identifiers
+    """
     return self._ctrl.list_kernels()
+    
+  def is_kernel_running(self, name: str) -> bool:
+    """
+    Check if a kernel is running.
+    
+    Parameters
+    ----------
+    name : str
+        Kernel identifier
+        
+    Returns
+    -------
+    bool
+        True if kernel is running, False otherwise
+    """
+    return self._ctrl.is_kernel_running(name)
 
   def execute(
     self,
@@ -91,15 +167,30 @@ class InterpreterAPI:
     code: str,
     transport: str = "zmq",
     timeout: float = 1.0
-  ) -> tuple[str, str | None]:
+  ) -> Tuple[str, Optional[str]]:
     """
-    Send `code` to kernel `name`, wait up to `timeout` seconds on each message,
-    and return (stdout, stderr_traceback_or_None).
+    Send `code` to kernel `name` and return execution results.
+    
+    Parameters
+    ----------
+    name : str
+        Kernel identifier
+    code : str
+        Python code to execute
+    transport : str
+        "zmq" for ZeroMQ transport, "http" for HTTP/WebSocket
+    timeout : float
+        Timeout in seconds for each message
+        
+    Returns
+    -------
+    Tuple[str, Optional[str]]
+        (stdout, stderr_or_None)
     """
     client = get_client(name, transport=transport)
     msg_id = client.execute(code)
     output: str = ""
-    error: str | None = None
+    error: Optional[str] = None
 
     while True:
       msg = client.get_iopub_msg(timeout=timeout)
@@ -114,29 +205,52 @@ class InterpreterAPI:
 
     return output, error
 
-
   def connect_console(self, name: str) -> subprocess.Popen[str]:
-    """Spawn a live Jupyter console attached to kernel `name`."""
+    """
+    Spawn a live Jupyter console attached to kernel `name`.
+    
+    Parameters
+    ----------
+    name : str
+        Kernel identifier
+        
+    Returns
+    -------
+    subprocess.Popen
+        Console process
+    """
     return cli_connect(name)
 
-
-  def get_kernel_info(self, name: str) -> dict:
+  def get_kernel_info(self, name: str) -> Dict[str, Any]:
     """
     Retrieve metadata for a given kernel.
-    Returns a dict containing the kernel's PID, connection_file, and any HTTP info.
+    
+    Parameters
+    ----------
+    name : str
+        Kernel identifier
+        
+    Returns
+    -------
+    Dict[str, Any]
+        Kernel metadata
     """
-    # Read persisted metadata from the controller
     return self._ctrl.read_kernel(name)
 
   def delete_kernel(self, name: str, missing_ok: bool = False) -> None:
     """
-    Delete a kernel by name: shuts it down (if running) and removes its metadata directory.
+    Delete a kernel: shut it down (if running) and remove its metadata.
+    
+    Parameters
+    ----------
+    name : str
+        Kernel identifier
+    missing_ok : bool
+        If True, don't raise error if kernel doesn't exist
     """
-    # Delegate deletion to the controller
-    self._ctrl.delete_kernel(name)
+    self._ctrl.delete_kernel(name, missing_ok=missing_ok)
 
-### The Dev Agent
-
+# Public module surface
 __all__ = [
   'OntologyAPI',
   'InterpreterAPI',
