@@ -1,0 +1,93 @@
+The Jupyter Kernels terminal-based Console.
+
+This launches a Console application inside a terminal.
+
+By default it will connect to a local Jupyter Server running at
+http://localhost:8888 and will create a new python kernel.
+
+The Console supports various extra features beyond the traditional single-
+process Terminal IPython shell, such as connecting to an existing jupyter
+kernel, via:
+
+    jupyter konsole --token <server token> --existing <kernel_id>
+
+where the previous session could have been created by another jupyter console,
+or by opening a notebook.
+
+Options
+=======
+The options below are convenience aliases to configurable class-options,
+as listed in the "Equivalent to" description-line of the aliases.
+To see all configurable class-options for some <cmd>, use:
+    <cmd> --help-all
+
+--debug
+    set log level to logging.DEBUG (maximize logging output)
+    Equivalent to: [--Application.log_level=10]
+--show-config
+    Show the application's configuration (human-readable format)
+    Equivalent to: [--Application.show_config=True]
+--show-config-json
+    Show the application's configuration (json format)
+    Equivalent to: [--Application.show_config_json=True]
+--generate-config
+    generate default config file
+    Equivalent to: [--JupyterApp.generate_config=True]
+-y
+    Answer yes to any questions instead of prompting.
+    Equivalent to: [--JupyterApp.answer_yes=True]
+--confirm-exit
+    Set to display confirmation dialog on exit. You can always use 'exit' or
+           'quit', to force a direct exit without any confirmation. This can also
+           be set in the config file by setting
+           `c.KonsoleApp.confirm_exit`.
+    Equivalent to: [--KonsoleApp.confirm_exit=True]
+--no-confirm-exit
+    Don't prompt the user when exiting. This will terminate the kernel
+           if it is owned by the frontend, and leave it alive if it is external.
+           This can also be set in the config file by setting
+           `c.KonsoleApp.confirm_exit`.
+    Equivalent to: [--KonsoleApp.confirm_exit=False]
+--simple-prompt
+    Force simple minimal prompt using `raw_input`
+    Equivalent to: [--WSTerminalInteractiveShell.simple_prompt=True]
+--no-simple-prompt
+    Use a rich interactive prompt with prompt_toolkit
+    Equivalent to: [--WSTerminalInteractiveShell.simple_prompt=False]
+--log-level=<Enum>
+    Set the log level by value or name.
+    Choices: any of [0, 10, 20, 30, 40, 50, 'DEBUG', 'INFO', 'WARN', 'ERROR', 'CRITICAL']
+    Default: 30
+    Equivalent to: [--Application.log_level]
+--config=<Unicode>
+    Full path of a config file.
+    Default: ''
+    Equivalent to: [--JupyterApp.config_file]
+--existing=<CUnicode>
+    Existing kernel ID to connect to.
+    Default: ''
+    Equivalent to: [--KonsoleApp.existing]
+--kernel=<Unicode>
+    The name of the kernel to connect to.
+    Default: 'python3'
+    Equivalent to: [--KonsoleApp.kernel_name]
+--token=<Unicode>
+    Jupyter Server token.
+    Default: ''
+    Equivalent to: [--KonsoleApp.token]
+--url=<Unicode>
+    URL to the Jupyter Server.
+    Default: 'http://localhost:8888'
+    Equivalent to: [--KonsoleApp.server_url]
+
+Examples
+--------
+
+    # Start a console connected to a local Jupyter Server running at http://localhost:8888 with a new python kernel.
+    jupyter konsole --token <server_token>
+
+    # Start a console connected to a distant Jupyter Server with a new python kernel.
+    jupyter konsole --url https://my.jupyter-server.xzy --token <server_token>
+
+To see all available configurables, use `--help-all`.
+
