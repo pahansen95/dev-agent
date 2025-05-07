@@ -4,6 +4,23 @@ DevAgent Interpreter Architecture
 This module defines the architecture for DevAgent's interpreter system, which provides
 computational environments for agents through a managed Jupyter infrastructure.
 
+# Usage
+
+An Execution Environment is the single point of integration into the Development
+Environment for both human developers, development agents & standard automations.
+The Execution Environment provides a realtime, programmatic way to interact with
+a project such as for:
+
+- Query & Search
+- File Manipulation
+- Git & Source Control
+- Tests & Debugging
+- Documentation
+
+The Exeuction Environment does not allow for arbitrary code execution; every connecting
+entity must first authenticate themselves to gain access to a session of certain
+permissions. Permissions may never be elevated during the lifetime of a session.
+
 # Architecture Overview
 
 The interpreter system is designed with clean separation of concerns, dividing 
