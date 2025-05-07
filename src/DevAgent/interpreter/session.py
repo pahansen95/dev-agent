@@ -1,66 +1,47 @@
 """
-DevAgent Interpreter State Management
+DevAgent Interpreter Session Management
 
-This module implements the persistence layer for DevAgent's Interpreter Sessions, 
-providing filesystem-based state management for session metadata, kernel registry,
-and working files.
+This module implements the session and kernel management components of the DevAgent interpreter
+system, providing persistent computational environments with controlled lifecycle management.
+
+## Components
+
+1. **StateManager**: Persistence layer - Handles on-disk storage of session configurations,
+   kernel registry, and filesystem space, ensuring sessions survive server restarts.
+
+2. **KernelController**: Runtime layer - Manages kernels within a session, handling
+   kernel lifecycle operations through the Jupyter Server API.
+
+3. **SessionManager**: Application layer - Coordinates between state persistence and 
+   kernel operations, providing a unified interface for session management.
 
 ## Conceptual Model
 
-In DevAgent, an Interpreter Session represents a persistent computational environment
-that can be accessed by multiple consumers (agents, humans, or automated systems).
-Similar to tmux sessions, these environments provide isolated execution contexts
-that maintain state across connections and server restarts.
+Sessions are persistent computational environments that can be accessed by multiple consumers,
+with each session containing one or more kernels. Sessions are project-owned resources that
+maintain state across connections and server restarts.
 
-Key concepts:
+### Lifecycle States
 
-1. **Session**: A named, persistent environment with its own filesystem space and
-   kernel(s). Sessions are project-owned resources that multiple consumers can
-   attach to. They persist indefinitely until explicitly purged.
+**Kernel Lifecycle**:
+- Non-existent → Configured → Starting → Running → Busy/Idle → Stopping → Stopped
 
-2. **Kernel**: A computational engine within a session. Initially, each session has
-   a single "main" kernel, but the architecture supports multiple specialized kernels
-   per session. Kernels maintain their own execution state.
+**Session Lifecycle**:
+- Non-existent → Created → Active/Inactive → Purged
 
-3. **Session Filesystem**: Each session has a dedicated filesystem area for temporary
-   files, outputs, and working data. This provides isolation between different
-   session contexts.
+## Component Relationships
 
-## State Structure
+- **SessionManager** coordinates operations between state and runtime
+- **SessionManager** uses **StateManager** to persist session and kernel state
+- **SessionManager** creates and manages **KernelController** instances per session
+- **KernelController** interfaces with Jupyter API for kernel operations
+- **KernelController** notifies **SessionManager** of kernel state changes
 
-The StateManager persists sessions as directories with a standard structure:
-
-```
-session-NAME/               # Base directory for a session
-├── metadata.json           # Session metadata (creation time, etc.)
-├── kernels.json            # Registry of kernels in this session
-└── fs/                     # Session filesystem (working directory)
-```
-
-## Usage Examples
-
-```python
-# Create a state manager
-state_manager = StateManager("/path/to/base_dir")
-
-# Create a new session
-state_manager.create_session("my_session")
-
-# Register a kernel in the session
-state_manager.save_kernel_state(
-    "my_session", "main", 
-    kernel_id="abc123", 
-    running=True
-)
-
-# Get filesystem path for session operations
-fs_path = state_manager.get_session_fs_path("my_session")
-```
-
-This module provides the foundation for state persistence in the interpreter
-system, allowing sessions to survive server restarts and providing a consistent
-interface for state operations across the codebase.
+This module provides the core session management functionality, working with the
+server infrastructure but maintaining separation of concerns between server lifecycle
+and session operations.
 """
+
 from __future__ import annotations
 from typing import Dict, List, Optional, Any, Union
 from pathlib import Path
@@ -770,258 +751,6 @@ class SessionManager:
         ----------
         base_dir : Optional[Union[str, Path]]
           Base directory for interpreter files. If None, uses .devagent in cwd.
-        """
-    pass
-
-  def server_up(self, server_url: Optional[str] = None) -> Dict[str, Any]:
-    """
-        Start the Jupyter Server and restore kernels.
-
-        Parameters
-        ----------
-        server_url : Optional[str]
-          Server URL specification
-
-        Returns
-        -------
-        Dict[str, Any]
-          Server connection information
-
-        Raises
-        ------
-        RuntimeError
-          If server start fails
-        """
-    pass
-
-  def server_down(self) -> bool:
-    """
-        Stop the Jupyter Server.
-
-        Returns
-        -------
-        bool
-          True if server was stopped, False if not running
-        """
-    pass
-
-  def server_purge(self) -> bool:
-    """
-        Stop the server and remove all state.
-
-        Returns
-        -------
-        bool
-          True if purge was successful
-        """
-    pass
-
-  def server_status(self) -> Dict[str, Any]:
-    """
-        Get server status.
-
-        Returns
-        -------
-        Dict[str, Any]
-          Server status information
-        """
-    pass
-
-  def create_kernel(
-    self,
-    name: str,
-    kernel_spec: str = "python3",
-    env: Optional[Dict[str, str]] = None,
-  ) -> str:
-    """
-        Create a new kernel.
-
-        Parameters
-        ----------
-        name : str
-          Kernel name
-        kernel_spec : str
-          Kernel specification name
-        env : Optional[Dict[str, str]]
-          Environment variables
-
-        Returns
-        -------
-        str
-          Kernel ID
-
-        Raises
-        ------
-        ValueError
-          If kernel already exists
-        RuntimeError
-          If server is not running or kernel creation fails
-        """
-    pass
-
-  def list_kernels(self) -> List[Dict[str, Any]]:
-    """
-        List all kernels.
-
-        Returns
-        -------
-        List[Dict[str, Any]]
-          List of kernel information
-        """
-    pass
-
-  def start_kernel(self, name: str) -> None:
-    """
-        Start a kernel.
-
-        Parameters
-        ----------
-        name : str
-          Kernel name
-
-        Raises
-        ------
-        ValueError
-          If kernel doesn't exist
-        RuntimeError
-          If server is not running or kernel start fails
-        """
-    pass
-
-  def stop_kernel(self, name: str, missing_ok: bool = False) -> None:
-    """
-        Stop a kernel.
-
-        Parameters
-        ----------
-        name : str
-          Kernel name
-        missing_ok : bool
-          If True, don't raise error if kernel doesn't exist
-
-        Raises
-        ------
-        ValueError
-          If kernel doesn't exist and missing_ok is False
-        RuntimeError
-          If server is not running or kernel stop fails
-        """
-    pass
-
-  def restart_kernel(self, name: str) -> None:
-    """
-        Restart a kernel.
-
-        Parameters
-        ----------
-        name : str
-          Kernel name
-
-        Raises
-        ------
-        ValueError
-          If kernel doesn't exist
-        RuntimeError
-          If server is not running or kernel restart fails
-        """
-    pass
-
-  def delete_kernel(self, name: str, missing_ok: bool = False) -> None:
-    """
-        Delete a kernel.
-
-        Parameters
-        ----------
-        name : str
-          Kernel name
-        missing_ok : bool
-          If True, don't raise error if kernel doesn't exist
-
-        Raises
-        ------
-        ValueError
-          If kernel doesn't exist and missing_ok is False
-        RuntimeError
-          If server is not running or kernel deletion fails
-        """
-    pass
-
-  def execute(self, name: str, code: str, timeout: float = 30.0) -> Tuple[str, Optional[str]]:
-    """
-        Execute code on a kernel.
-
-        Parameters
-        ----------
-        name : str
-          Kernel name
-        code : str
-          Python code to execute
-        timeout : float
-          Timeout in seconds
-
-        Returns
-        -------
-        Tuple[str, Optional[str]]
-          (stdout, stderr or None)
-
-        Raises
-        ------
-        ValueError
-          If kernel doesn't exist
-        RuntimeError
-          If server is not running or execution fails
-        TimeoutError
-          If execution times out
-        """
-    pass
-
-  def is_kernel_running(self, name: str) -> bool:
-    """
-        Check if a kernel is running.
-
-        Parameters
-        ----------
-        name : str
-          Kernel name
-
-        Returns
-        -------
-        bool
-          True if kernel is running
-        """
-    pass
-
-  def connect_console(self, name: str) -> Any:
-    """
-        Connect to a kernel with a console.
-
-        Parameters
-        ----------
-        name : str
-          Kernel name
-
-        Returns
-        -------
-        Any
-          Console process object
-
-        Raises
-        ------
-        ValueError
-          If kernel doesn't exist or is not running
-        RuntimeError
-          If server is not running or console connection fails
-        """
-    pass
-
-  def launch_lab(self) -> None:
-    """
-        Launch Jupyter Lab interface in the web browser.
-
-        Raises
-        ------
-        RuntimeError
-          If server is not running or using Unix sockets
         """
     pass
 
