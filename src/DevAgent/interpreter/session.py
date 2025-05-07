@@ -751,3 +751,282 @@ class KernelController:
           If kernel restoration fails
         """
     pass
+
+class SessionManager:
+
+  """
+    Manages interpreter sessions.
+
+    This component provides a unified interface for interpreter operations,
+    coordinating between the ServerController, KernelController, and StateManager.
+    It serves as the main entry point for the interpreter system.
+    """
+
+  def __init__(self, base_dir: Optional[Union[str, Path]] = None):
+    """
+        Initialize the interpreter manager.
+
+        Parameters
+        ----------
+        base_dir : Optional[Union[str, Path]]
+          Base directory for interpreter files. If None, uses .devagent in cwd.
+        """
+    pass
+
+  def server_up(self, server_url: Optional[str] = None) -> Dict[str, Any]:
+    """
+        Start the Jupyter Server and restore kernels.
+
+        Parameters
+        ----------
+        server_url : Optional[str]
+          Server URL specification
+
+        Returns
+        -------
+        Dict[str, Any]
+          Server connection information
+
+        Raises
+        ------
+        RuntimeError
+          If server start fails
+        """
+    pass
+
+  def server_down(self) -> bool:
+    """
+        Stop the Jupyter Server.
+
+        Returns
+        -------
+        bool
+          True if server was stopped, False if not running
+        """
+    pass
+
+  def server_purge(self) -> bool:
+    """
+        Stop the server and remove all state.
+
+        Returns
+        -------
+        bool
+          True if purge was successful
+        """
+    pass
+
+  def server_status(self) -> Dict[str, Any]:
+    """
+        Get server status.
+
+        Returns
+        -------
+        Dict[str, Any]
+          Server status information
+        """
+    pass
+
+  def create_kernel(
+    self,
+    name: str,
+    kernel_spec: str = "python3",
+    env: Optional[Dict[str, str]] = None,
+  ) -> str:
+    """
+        Create a new kernel.
+
+        Parameters
+        ----------
+        name : str
+          Kernel name
+        kernel_spec : str
+          Kernel specification name
+        env : Optional[Dict[str, str]]
+          Environment variables
+
+        Returns
+        -------
+        str
+          Kernel ID
+
+        Raises
+        ------
+        ValueError
+          If kernel already exists
+        RuntimeError
+          If server is not running or kernel creation fails
+        """
+    pass
+
+  def list_kernels(self) -> List[Dict[str, Any]]:
+    """
+        List all kernels.
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+          List of kernel information
+        """
+    pass
+
+  def start_kernel(self, name: str) -> None:
+    """
+        Start a kernel.
+
+        Parameters
+        ----------
+        name : str
+          Kernel name
+
+        Raises
+        ------
+        ValueError
+          If kernel doesn't exist
+        RuntimeError
+          If server is not running or kernel start fails
+        """
+    pass
+
+  def stop_kernel(self, name: str, missing_ok: bool = False) -> None:
+    """
+        Stop a kernel.
+
+        Parameters
+        ----------
+        name : str
+          Kernel name
+        missing_ok : bool
+          If True, don't raise error if kernel doesn't exist
+
+        Raises
+        ------
+        ValueError
+          If kernel doesn't exist and missing_ok is False
+        RuntimeError
+          If server is not running or kernel stop fails
+        """
+    pass
+
+  def restart_kernel(self, name: str) -> None:
+    """
+        Restart a kernel.
+
+        Parameters
+        ----------
+        name : str
+          Kernel name
+
+        Raises
+        ------
+        ValueError
+          If kernel doesn't exist
+        RuntimeError
+          If server is not running or kernel restart fails
+        """
+    pass
+
+  def delete_kernel(self, name: str, missing_ok: bool = False) -> None:
+    """
+        Delete a kernel.
+
+        Parameters
+        ----------
+        name : str
+          Kernel name
+        missing_ok : bool
+          If True, don't raise error if kernel doesn't exist
+
+        Raises
+        ------
+        ValueError
+          If kernel doesn't exist and missing_ok is False
+        RuntimeError
+          If server is not running or kernel deletion fails
+        """
+    pass
+
+  def execute(self, name: str, code: str, timeout: float = 30.0) -> Tuple[str, Optional[str]]:
+    """
+        Execute code on a kernel.
+
+        Parameters
+        ----------
+        name : str
+          Kernel name
+        code : str
+          Python code to execute
+        timeout : float
+          Timeout in seconds
+
+        Returns
+        -------
+        Tuple[str, Optional[str]]
+          (stdout, stderr or None)
+
+        Raises
+        ------
+        ValueError
+          If kernel doesn't exist
+        RuntimeError
+          If server is not running or execution fails
+        TimeoutError
+          If execution times out
+        """
+    pass
+
+  def is_kernel_running(self, name: str) -> bool:
+    """
+        Check if a kernel is running.
+
+        Parameters
+        ----------
+        name : str
+          Kernel name
+
+        Returns
+        -------
+        bool
+          True if kernel is running
+        """
+    pass
+
+  def connect_console(self, name: str) -> Any:
+    """
+        Connect to a kernel with a console.
+
+        Parameters
+        ----------
+        name : str
+          Kernel name
+
+        Returns
+        -------
+        Any
+          Console process object
+
+        Raises
+        ------
+        ValueError
+          If kernel doesn't exist or is not running
+        RuntimeError
+          If server is not running or console connection fails
+        """
+    pass
+
+  def launch_lab(self) -> None:
+    """
+        Launch Jupyter Lab interface in the web browser.
+
+        Raises
+        ------
+        RuntimeError
+          If server is not running or using Unix sockets
+        """
+    pass
+
+def setup_interpreter(
+    # ... TODO
+) -> InterpreterManager:
+  """Factory Function to setup the Interpreter Machinery"""
+  raise NotImplementedError
