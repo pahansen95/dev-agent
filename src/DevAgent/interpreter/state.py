@@ -1,108 +1,526 @@
+"""
+DevAgent Interpreter State Management
+
+This module implements the persistence layer for DevAgent's Interpreter Sessions, 
+providing filesystem-based state management for session metadata, kernel registry,
+and working files.
+
+## Conceptual Model
+
+In DevAgent, an Interpreter Session represents a persistent computational environment
+that can be accessed by multiple consumers (agents, humans, or automated systems).
+Similar to tmux sessions, these environments provide isolated execution contexts
+that maintain state across connections and server restarts.
+
+Key concepts:
+
+1. **Session**: A named, persistent environment with its own filesystem space and
+   kernel(s). Sessions are project-owned resources that multiple consumers can
+   attach to. They persist indefinitely until explicitly purged.
+
+2. **Kernel**: A computational engine within a session. Initially, each session has
+   a single "main" kernel, but the architecture supports multiple specialized kernels
+   per session. Kernels maintain their own execution state.
+
+3. **Session Filesystem**: Each session has a dedicated filesystem area for temporary
+   files, outputs, and working data. This provides isolation between different
+   session contexts.
+
+## State Structure
+
+The StateManager persists sessions as directories with a standard structure:
+
+```
+session-NAME/               # Base directory for a session
+├── metadata.json           # Session metadata (creation time, etc.)
+├── kernels.json            # Registry of kernels in this session
+└── fs/                     # Session filesystem (working directory)
+```
+
+## Usage Examples
+
+```python
+# Create a state manager
+state_manager = StateManager("/path/to/base_dir")
+
+# Create a new session
+state_manager.create_session("my_session")
+
+# Register a kernel in the session
+state_manager.save_kernel_state(
+    "my_session", "main", 
+    kernel_id="abc123", 
+    running=True
+)
+
+# Get filesystem path for session operations
+fs_path = state_manager.get_session_fs_path("my_session")
+```
+
+This module provides the foundation for state persistence in the interpreter
+system, allowing sessions to survive server restarts and providing a consistent
+interface for state operations across the codebase.
+"""
+from __future__ import annotations
+from typing import Dict, List, Optional, Any, Union
+from pathlib import Path
+import json
+import os
+import shutil
+import logging
+import time
+import tempfile
+import contextlib
+
+logger = logging.getLogger(__name__)
+
 class StateManager:
 
   """
-    Manages persistent state for kernels and interpreters.
-
-    This component is responsible for saving and retrieving state information
-    for kernels and interpreter sessions. It provides a consistent interface
-    for state persistence regardless of the underlying storage mechanism.
-    """
+  Manages persistent state for sessions and their kernels.
+  
+  Uses a simple file-based storage structure:
+  - session-NAME/               # Base directory for a session
+    - metadata.json             # Session metadata
+    - kernels.json              # Kernel registry
+    - fs/                       # Temporary filesystem
+  """
 
   def __init__(self, base_dir: Union[str, Path]):
     """
-        Initialize the state manager.
+    Initialize the state manager.
 
-        Parameters
-        ----------
-        base_dir : Union[str, Path]
-          Base directory for state files
-        """
-    pass
+    Parameters
+    ----------
+    base_dir : Union[str, Path]
+      Base directory for state files
+    """
+    self.base_dir = Path(base_dir)
+    self.base_dir.mkdir(exist_ok=True, parents=True)
 
+  def _get_session_dir(self, session_name: str) -> Path:
+    """Get the directory path for a session."""
+    return self.base_dir / f"session-{session_name}"
+
+  def _ensure_session_dir(self, session_name: str) -> Path:
+    """Ensure session directory exists and return path."""
+    session_dir = self._get_session_dir(session_name)
+    session_dir.mkdir(exist_ok=True)
+    return session_dir
+
+  def _write_atomic(self, path: Path, content: Dict[str, Any]) -> None:
+    """Write content to a file atomically using a temporary file."""
+    # Create a temporary file in the same directory
+    dir_path = path.parent
+    dir_path.mkdir(exist_ok=True, parents=True)
+
+    with tempfile.NamedTemporaryFile(mode='w', dir=dir_path, delete=False) as temp_file:
+      temp_path = Path(temp_file.name)
+      json.dump(content, temp_file, indent=2)
+
+    # Atomic rename
+    temp_path.rename(path)
+
+  def _read_json(self, path: Path, default: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Read JSON from a file with a default if file doesn't exist."""
+    if not path.exists():
+      return default if default is not None else {}
+
+    try:
+      with open(path, 'r') as f:
+        return json.load(f)
+    except json.JSONDecodeError:
+      logger.warning(f"Invalid JSON in {path}, returning default")
+      return default if default is not None else {}
+
+  def create_session(self, session_name: str) -> None:
+    """
+    Create a new session.
+    
+    Parameters
+    ----------
+    session_name : str
+      Name of the session
+    
+    Raises
+    ------
+    ValueError
+      If session already exists
+    """
+    session_dir = self._get_session_dir(session_name)
+    if session_dir.exists():
+      raise ValueError(f"Session {session_name} already exists")
+
+    # Create session directory structure
+    session_dir.mkdir(parents=True)
+    (session_dir / "fs").mkdir()
+
+    # Create initial metadata
+    metadata = {"name": session_name, "created_at": time.time(), "updated_at": time.time()}
+    self._write_atomic(session_dir / "metadata.json", metadata)
+
+    # Create empty kernel registry
+    self._write_atomic(session_dir / "kernels.json", {"kernels": []})
+
+  def delete_session(self, session_name: str) -> None:
+    """
+    Delete a session and all its data.
+    
+    Parameters
+    ----------
+    session_name : str
+      Name of the session
+    """
+    session_dir = self._get_session_dir(session_name)
+    if session_dir.exists():
+      shutil.rmtree(session_dir)
+
+  def list_sessions(self) -> List[str]:
+    """
+    List all available sessions.
+    
+    Returns
+    -------
+    List[str]
+      List of session names
+    """
+    sessions = []
+    for item in self.base_dir.iterdir():
+      if item.is_dir() and item.name.startswith("session-"):
+        sessions.append(item.name[8:]) # Remove "session-" prefix
+    return sessions
+
+  def session_exists(self, session_name: str) -> bool:
+    """
+    Check if a session exists.
+    
+    Parameters
+    ----------
+    session_name : str
+      Name of the session
+        
+    Returns
+    -------
+    bool
+      True if session exists
+    """
+    return self._get_session_dir(session_name).exists()
+
+  def get_session_metadata(self, session_name: str) -> Optional[Dict[str, Any]]:
+    """
+    Get session metadata.
+    
+    Parameters
+    ----------
+    session_name : str
+      Name of the session
+        
+    Returns
+    -------
+    Optional[Dict[str, Any]]
+      Session metadata or None if session doesn't exist
+    """
+    session_dir = self._get_session_dir(session_name)
+    metadata_path = session_dir / "metadata.json"
+
+    if not metadata_path.exists():
+      return None
+
+    return self._read_json(metadata_path)
+
+  def update_session_metadata(self, session_name: str, **updates) -> None:
+    """
+    Update session metadata.
+    
+    Parameters
+    ----------
+    session_name : str
+      Name of the session
+    **updates
+      Key-value pairs to update
+        
+    Raises
+    ------
+    ValueError
+      If session doesn't exist
+    """
+    if not self.session_exists(session_name):
+      raise ValueError(f"Session {session_name} doesn't exist")
+
+    session_dir = self._get_session_dir(session_name)
+    metadata_path = session_dir / "metadata.json"
+
+    metadata = self._read_json(metadata_path, {})
+    metadata.update(updates)
+    metadata["updated_at"] = time.time()
+
+    self._write_atomic(metadata_path, metadata)
+
+  # Kernel state management
   def save_kernel_state(
     self,
-    name: str,
+    session_name: str,
+    kernel_name: str,
     kernel_id: str,
     kernel_spec: str = "python3",
     env: Optional[Dict[str, str]] = None,
     running: bool = True,
   ) -> None:
     """
-        Save kernel state for persistence.
+    Save kernel state for persistence.
 
-        Parameters
-        ----------
-        name : str
-          Kernel name
-        kernel_id : str
-          Jupyter kernel ID
-        kernel_spec : str
-          Kernel specification name
-        env : Optional[Dict[str, str]]
-          Environment variables
-        running : bool
-          Whether the kernel is currently running
-        """
-    pass
-
-  def get_kernel_state(self, name: str) -> Optional[Dict[str, Any]]:
+    Parameters
+    ----------
+    session_name : str
+      Session name
+    kernel_name : str
+      Kernel name within the session
+    kernel_id : str
+      Jupyter kernel ID
+    kernel_spec : str
+      Kernel specification name
+    env : Optional[Dict[str, str]]
+      Environment variables
+    running : bool
+      Whether the kernel is currently running
+    
+    Raises
+    ------
+    ValueError
+      If session doesn't exist
     """
-        Get saved kernel state.
+    if not self.session_exists(session_name):
+      raise ValueError(f"Session {session_name} doesn't exist")
 
-        Parameters
-        ----------
-        name : str
-          Kernel name
+    session_dir = self._get_session_dir(session_name)
+    kernels_path = session_dir / "kernels.json"
 
-        Returns
-        -------
-        Optional[Dict[str, Any]]
-          Kernel state or None if not found
-        """
-    pass
+    kernels_data = self._read_json(kernels_path, {"kernels": []})
 
-  def update_kernel_state(self, name: str, **kwargs) -> None:
+    # Find existing kernel or create new entry
+    kernel_entry = None
+    for entry in kernels_data["kernels"]:
+      if entry["name"] == kernel_name:
+        kernel_entry = entry
+        break
+
+    if kernel_entry is None:
+      kernel_entry = {"name": kernel_name}
+      kernels_data["kernels"].append(kernel_entry)
+
+    # Update kernel state
+    kernel_entry.update({"kernel_id": kernel_id, "kernel_spec": kernel_spec, "env": env or {}, "running": running, "updated_at": time.time()})
+
+    self._write_atomic(kernels_path, kernels_data)
+
+    # Update session metadata as well
+    self.update_session_metadata(session_name, updated_at=time.time())
+
+  def get_kernel_state(self, session_name: str, kernel_name: str) -> Optional[Dict[str, Any]]:
     """
-        Update kernel state with new values.
+    Get saved kernel state.
 
-        Parameters
-        ----------
-        name : str
-          Kernel name
-        **kwargs
-          Values to update
-        """
-    pass
+    Parameters
+    ----------
+    session_name : str
+      Session name
+    kernel_name : str
+      Kernel name
 
-  def delete_kernel_state(self, name: str) -> None:
+    Returns
+    -------
+    Optional[Dict[str, Any]]
+      Kernel state or None if not found
     """
-        Delete kernel state.
+    if not self.session_exists(session_name):
+      return None
 
-        Parameters
-        ----------
-        name : str
-          Kernel name
-        """
-    pass
+    session_dir = self._get_session_dir(session_name)
+    kernels_path = session_dir / "kernels.json"
 
-  def get_running_kernels(self) -> List[Dict[str, Any]]:
+    if not kernels_path.exists():
+      return None
+
+    kernels_data = self._read_json(kernels_path, {"kernels": []})
+
+    for kernel in kernels_data["kernels"]:
+      if kernel["name"] == kernel_name:
+        return kernel
+
+    return None
+
+  def update_kernel_state(self, session_name: str, kernel_name: str, **kwargs) -> None:
     """
-        Get list of kernels marked as running.
+    Update kernel state with new values.
 
-        Returns
-        -------
-        List[Dict[str, Any]]
-          List of kernel states for running kernels
-        """
-    pass
-
-  def list_kernels(self) -> List[Dict[str, Any]]:
+    Parameters
+    ----------
+    session_name : str
+      Session name
+    kernel_name : str
+      Kernel name
+    **kwargs
+      Values to update
+    
+    Raises
+    ------
+    ValueError
+      If session or kernel doesn't exist
     """
-        List all kernels with their state.
+    if not self.session_exists(session_name):
+      raise ValueError(f"Session {session_name} doesn't exist")
 
-        Returns
-        -------
-        List[Dict[str, Any]]
-          List of all kernel states
-        """
-    pass
+    kernel_state = self.get_kernel_state(session_name, kernel_name)
+    if kernel_state is None:
+      raise ValueError(f"Kernel {kernel_name} not found in session {session_name}")
+
+    session_dir = self._get_session_dir(session_name)
+    kernels_path = session_dir / "kernels.json"
+
+    kernels_data = self._read_json(kernels_path, {"kernels": []})
+
+    for kernel in kernels_data["kernels"]:
+      if kernel["name"] == kernel_name:
+        kernel.update(kwargs)
+        kernel["updated_at"] = time.time()
+        break
+
+    self._write_atomic(kernels_path, kernels_data)
+    self.update_session_metadata(session_name, updated_at=time.time())
+
+  def delete_kernel_state(self, session_name: str, kernel_name: str) -> None:
+    """
+    Delete kernel state.
+
+    Parameters
+    ----------
+    session_name : str
+      Session name
+    kernel_name : str
+      Kernel name
+    """
+    if not self.session_exists(session_name):
+      return
+
+    session_dir = self._get_session_dir(session_name)
+    kernels_path = session_dir / "kernels.json"
+
+    if not kernels_path.exists():
+      return
+
+    kernels_data = self._read_json(kernels_path, {"kernels": []})
+
+    kernels_data["kernels"] = [k for k in kernels_data["kernels"] if k["name"] != kernel_name]
+
+    self._write_atomic(kernels_path, kernels_data)
+    self.update_session_metadata(session_name, updated_at=time.time())
+
+  def get_running_kernels(self, session_name: str) -> List[Dict[str, Any]]:
+    """
+    Get list of kernels marked as running in a session.
+
+    Parameters
+    ----------
+    session_name : str
+      Session name
+
+    Returns
+    -------
+    List[Dict[str, Any]]
+      List of kernel states for running kernels
+    """
+    if not self.session_exists(session_name):
+      return []
+
+    session_dir = self._get_session_dir(session_name)
+    kernels_path = session_dir / "kernels.json"
+
+    if not kernels_path.exists():
+      return []
+
+    kernels_data = self._read_json(kernels_path, {"kernels": []})
+    return [k for k in kernels_data["kernels"] if k.get("running", False)]
+
+  def list_kernels(self, session_name: str) -> List[Dict[str, Any]]:
+    """
+    List all kernels with their state in a session.
+
+    Parameters
+    ----------
+    session_name : str
+      Session name
+
+    Returns
+    -------
+    List[Dict[str, Any]]
+      List of all kernel states
+    """
+    if not self.session_exists(session_name):
+      return []
+
+    session_dir = self._get_session_dir(session_name)
+    kernels_path = session_dir / "kernels.json"
+
+    if not kernels_path.exists():
+      return []
+
+    kernels_data = self._read_json(kernels_path, {"kernels": []})
+    return kernels_data["kernels"]
+
+  def get_session_fs_path(self, session_name: str) -> Optional[Path]:
+    """
+    Get path to session filesystem.
+    
+    Parameters
+    ----------
+    session_name : str
+      Session name
+        
+    Returns
+    -------
+    Optional[Path]
+      Path to filesystem directory or None if session doesn't exist
+    """
+    if not self.session_exists(session_name):
+      return None
+
+    session_dir = self._get_session_dir(session_name)
+    fs_path = session_dir / "fs"
+
+    if not fs_path.exists():
+      fs_path.mkdir(exist_ok=True)
+
+    return fs_path
+
+  @contextlib.contextmanager
+  def session_fs_context(self, session_name: str):
+    """
+    Context manager for session filesystem operations.
+    
+    Parameters
+    ----------
+    session_name : str
+      Session name
+      
+    Yields
+    ------
+    Path
+      Path to session filesystem directory
+      
+    Raises
+    ------
+    ValueError
+      If session doesn't exist
+    """
+    if not self.session_exists(session_name):
+      raise ValueError(f"Session {session_name} doesn't exist")
+
+    fs_path = self.get_session_fs_path(session_name)
+    if fs_path is None:
+      raise ValueError(f"Failed to access filesystem for session {session_name}")
+
+    try:
+      yield fs_path
+    finally:
+      # Could add cleanup or tracking logic here if needed
+      pass

@@ -96,8 +96,10 @@ def handle_interpreter_server(
     return
 
   # Get base directory from kwargs or use current directory
-  try: base_dir = get_kwarg("dir")
-  except: base_dir = os.path.join(os.getcwd(), '.devagent')
+  try:
+    base_dir = get_kwarg("dir")
+  except:
+    base_dir = os.path.join(os.getcwd(), '.devagent')
 
   # Create the API instance
   from .api import InterpreterServerAPI

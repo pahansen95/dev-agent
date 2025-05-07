@@ -224,4 +224,3 @@ class KernelController:
           If kernel restoration fails
         """
     pass
-
