@@ -42,7 +42,7 @@ responsibilities into four main components:
 
 # Data Flow
 
-1. InterpreterManager receives commands from the API layer
+1. InterpreterManager is the primary point of entry
 2. For server operations, it delegates to ServerController
 3. For kernel operations, it obtains a KernelController and delegates operations
 4. KernelController performs operations via Jupyter Server API
@@ -753,3 +753,9 @@ class InterpreterManager:
       If server is not running or using Unix sockets
     """
     pass
+
+def setup_interpreter(
+  # ... TODO
+) -> InterpreterManager:
+  """Factory Function to setup the Interpreter Machinery"""
+  raise NotImplementedError
