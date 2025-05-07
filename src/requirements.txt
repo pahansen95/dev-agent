@@ -1,6 +1,7 @@
 
 networkx ~= 3.4 # Graph Library
 tqdm ~= 4.66 # Progress Meter
+requests ~= 2.32 # Synchronous HTTP Client/Server
 
 ### REPL
 # Core IPython/Jupyter kernel dependencies
