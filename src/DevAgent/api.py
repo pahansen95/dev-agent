@@ -3,7 +3,7 @@ The Dev Agent's API
 
 Provides a clean interface to the ontology graph and kernel management.
 """
-
+from __future__ import annotations
 from .ontology import OntologyGraph, Node, Stage
 from .interpreter import (
   KernelController,
@@ -20,9 +20,15 @@ import requests
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple, Union
+from typing import Dict, List, Any, Optional, Tuple, Union, Protocol
 
-class OntologyAPI:
+class API(Protocol):
+
+  @classmethod
+  def factory(cls, *args, **kwds) -> API:
+    ...
+
+class OntologyAPI(API):
 
   """Python API for ontology graph operations."""
 
@@ -69,7 +75,107 @@ class OntologyAPI:
     """Add an edge to the graph."""
     graph.add_edge(src, rel, dst)
 
+from .interpreter import ServerController
+import os
+from pathlib import Path
+from typing import Dict, Any, Optional, Union
+
+class InterpreterServerAPI(API):
+
+  """Python API for interpreter server operations."""
+
+  def __init__(self, controller: ServerController):
+    """
+        Initialize with a ServerController instance.
+        
+        Parameters
+        ----------
+        controller : ServerController
+            The server controller to use for operations
+        """
+    self.controller = controller
+
+  @classmethod
+  def factory(cls, base_dir: Union[str, Path] = None) -> InterpreterServerAPI:
+    """
+        Create an InterpreterServerAPI instance with a ServerController.
+        
+        Parameters
+        ----------
+        base_dir : Union[str, Path], optional
+            Base directory for server files, defaults to current working directory
+            
+        Returns
+        -------
+        InterpreterAPI
+            An initialized InterpreterAPI instance
+        """
+    if base_dir is None:
+      base_dir = os.getcwd()
+    controller = ServerController(Path(base_dir))
+    return cls(controller)
+
+  def up(self, server_url: Optional[str] = None) -> Dict[str, Any]:
+    """
+        Start the Jupyter server and return connection information.
+        
+        Parameters
+        ----------
+        server_url : Optional[str], optional
+            Server URL specification (unix:///path/to/socket.sock or tcp://host:port)
+            
+        Returns
+        -------
+        Dict[str, Any]
+            Connection information including server URI
+            
+        Raises
+        ------
+        RuntimeError
+            If server fails to start
+        """
+    return self.controller.up(server_url)
+
+  def down(self) -> bool:
+    """
+        Stop the Jupyter server if running.
+            
+        Returns
+        -------
+        bool
+            True if server was stopped, False if it was not running
+        """
+    return self.controller.down()
+
+  def status(self) -> Dict[str, Any]:
+    """
+        Get current Jupyter server status.
+            
+        Returns
+        -------
+        Dict[str, Any]
+            Status information including:
+            - running: bool - Whether server is running
+            - connection_info: Dict - Connection details if running
+            - pid: int - Process ID if running
+            - last_start_time: float - Timestamp of last start
+            - last_error: Optional[str] - Last error message
+        """
+    return self.controller.status()
+
+  def purge(self) -> bool:
+    """
+        Stop the Jupyter server and remove all state files.
+            
+        Returns
+        -------
+        bool
+            True if purge was successful
+        """
+    return self.controller.purge()
+
 # Public module surface
 __all__ = [
   "OntologyAPI",
+  "InterpreterServerAPI",
 ]
