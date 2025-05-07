@@ -5,20 +5,8 @@ Provides a clean interface to the ontology graph and kernel management.
 """
 from __future__ import annotations
 from .ontology import OntologyGraph, Node, Stage
-from .interpreter import (
-  KernelController,
-  cli_connect,
-  get_client,
-  JupyterServerManager,
-  connect_kernel_websocket,
-)
-from jupyter_client import BlockingKernelClient
-import subprocess
-import json
-import time
-import requests
+from .interpreter import ServerController, setup_interpreter
 import os
-import sys
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union, Protocol
 

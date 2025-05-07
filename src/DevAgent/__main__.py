@@ -23,7 +23,6 @@ def handle_ontology(
   env: dict[str, str],
   stdin: TextIO,
   stdout: TextIO,
-  stderr: TextIO,
   kwargs: dict[str, str],
   remainder: deque[str],
   E: type[Exception],
@@ -63,6 +62,143 @@ def handle_ontology(
   # for mutating ops we write back the updated graph
   json.dump(OntologyAPI.dump(graph), open(out_f, "w") if out_f != "-" else stdout, indent=2)
   stdout.write("\n")
+
+def handle_interpreter_server(
+  pop_arg: Callable[[str], str],
+  get_kwarg: Callable[[str, Union[str, bool, Any]], str],
+  env: dict[str, str],
+  stdin: TextIO,
+  stdout: TextIO,
+  kwargs: dict[str, str],
+  remainder: deque[str],
+  E: type[Exception],
+):
+  """Handle the 'interpreter server' subcommand.
+  
+  Supports the following actions:
+  - up: Start the Jupyter server
+  - down: Stop the Jupyter server
+  - status: Check server status
+  - purge: Stop and remove server state
+  
+  Examples:
+    python -m DevAgent interpreter server up
+    python -m DevAgent interpreter server up --url=tcp://localhost:8888
+    python -m DevAgent interpreter server status
+  """
+  # Get the server action (e.g., "up", "down", "status", "purge")
+  try:
+    action = pop_arg("action")
+  except Exception:
+    # Show usage if no action provided
+    stdout.write("Usage: python -m DevAgent interpreter server <action> [options]\n")
+    stdout.write("Actions: up, down, status, purge\n")
+    return
+
+  # Get base directory from kwargs or use current directory
+  try: base_dir = get_kwarg("dir")
+  except: base_dir = os.path.join(os.getcwd(), '.devagent')
+
+  # Create the API instance
+  from .api import InterpreterServerAPI
+  api = InterpreterServerAPI.factory(base_dir)
+
+  # Handle different server actions
+  if action == "up":
+    server_url = kwargs.get("url")
+    try:
+      conn_info = api.up(server_url)
+      stdout.write(f"Server started successfully\n")
+      stdout.write(f"URI: {conn_info['uri']}\n")
+    except Exception as e:
+      raise E(f"Failed to start server: {str(e)}")
+
+  elif action == "down":
+    result = api.down()
+    if result:
+      stdout.write("Server stopped successfully\n")
+    else:
+      stdout.write("Server was not running\n")
+
+  elif action == "status":
+    status = api.status()
+    stdout.write(f"Server status: {'Running' if status['running'] else 'Not running'}\n")
+    if status['running']:
+      stdout.write(f"PID: {status['pid']}\n")
+      stdout.write(f"URI: {status['connection_info']['uri']}\n")
+      import time
+      started = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(status['last_start_time']))
+      stdout.write(f"Started: {started}\n")
+
+  elif action == "purge":
+    result = api.purge()
+    if result:
+      stdout.write("Server purged successfully\n")
+    else:
+      stdout.write("Failed to purge server\n")
+
+  else:
+    raise E(f"Unknown server action: {action}")
+
+def handle_interpreter_kernel(
+  pop_arg: Callable[[str], str],
+  get_kwarg: Callable[[str, Union[str, bool, Any]], str],
+  env: dict[str, str],
+  stdin: TextIO,
+  stdout: TextIO,
+  kwargs: dict[str, str],
+  remainder: deque[str],
+  E: type[Exception],
+):
+  """Handle the 'interpreter kernel' subcommand.
+  
+  Placeholder for future kernel operations:
+  - create: Create a new kernel
+  - list: List available kernels
+  - start: Start a kernel
+  - stop: Stop a kernel
+  - restart: Restart a kernel
+  - delete: Delete a kernel
+  
+  Examples:
+    python -m DevAgent interpreter kernel list
+    python -m DevAgent interpreter kernel start <name>
+  """
+  # Placeholder for kernel operations
+  # To be implemented in future
+  raise E("Kernel operations not yet implemented")
+
+def handle_interpreter(
+  pop_arg: Callable[[str], str],
+  get_kwarg: Callable[[str, Union[str, bool, Any]], str],
+  env: dict[str, str],
+  stdin: TextIO,
+  stdout: TextIO,
+  kwargs: dict[str, str],
+  remainder: deque[str],
+  E: type[Exception],
+):
+  """Handle the 'interpreter' subcommand with its operations.
+  
+  Supports the following operations:
+  - server: Manage the Jupyter server (up, down, status, purge)
+  - kernel: Manage kernels (to be implemented)
+  
+  Examples:
+    python -m DevAgent interpreter server up
+    python -m DevAgent interpreter server status
+    python -m DevAgent interpreter kernel list
+  """
+
+  # Get the interpreter operation (e.g., "server")
+  op = pop_arg("operation")
+
+  if op == "server":
+    handle_interpreter_server(pop_arg, get_kwarg, env, stdin, stdout, kwargs, remainder, E)
+  elif op == "kernel":
+    handle_interpreter_kernel(pop_arg, get_kwarg, env, stdin, stdout, kwargs, remainder, E)
+  else:
+    raise E(f"Unknown interpreter operation: {op}")
 
 def main(
   args: deque[str],
@@ -126,7 +262,6 @@ def main(
         env,
         stdin,
         stdout,
-        sys.stderr,
         kwargs,
         remainder,
         E,
@@ -138,7 +273,6 @@ def main(
         env,
         stdin,
         stdout,
-        sys.stderr,
         kwargs,
         remainder,
         E,
