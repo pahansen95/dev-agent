@@ -25,7 +25,7 @@ def handle_ontology(
   stderr: TextIO,
   kwargs: dict[str, str],
   remainder: deque[str],
-  E: type,
+  E: type[Exception],
 ):
   op = pop_arg('operation')  # e.g. "init", "info", "dump", "add-node", "add-edge"
   # support both "init" and "create" as synonyms if you like
@@ -62,100 +62,6 @@ def handle_ontology(
         open(out_f,'w') if out_f!='-' else stdout,
         indent=2)
   stdout.write('\n')
-
-def handle_interpreter(
-  pop_arg: Callable[[str], str],
-  get_kwarg: Callable[[str, Union[str, bool, Any]], str],
-  env: dict[str, str],
-  stdin: TextIO,
-  stdout: TextIO,
-  stderr: TextIO,
-  kwargs: dict[str, str],
-  remainder: deque[str],
-  E: type,
-):
-  """
-  Handle interpreter operations through the CLI.
-  
-  This function parses arguments and flags for the `interpreter` subcommand
-  and delegates to the appropriate InterpreterAPI methods.
-  """
-  from DevAgent.interpreter import KernelController
-  api = InterpreterAPI(KernelController())
-  op = pop_arg('operation')  # e.g. "create","start","stop","restart","list","execute","connect","info","delete"
-  operations_requiring_name = {'create', 'start', 'stop', 'restart', 'execute', 'connect', 'info', 'delete'}
-  name = pop_arg('NAME') if op in operations_requiring_name else None
-
-  match op:
-    case 'create':
-      # Parse more granular options
-      replace_existing = bool(kwargs.get('replace', False))
-      extra_args = kwargs.get('args').split(',') if 'args' in kwargs else None
-      
-      api.create_kernel(
-        name,
-        extra_args=extra_args,
-        env=None,  # We could parse env vars from kwargs in the future
-        replace_existing=replace_existing,
-      )
-      stdout.write(f"Kernel '{name}' created\n")
-    
-    case 'start':
-      api.start_kernel(name)
-      stdout.write(f"Kernel '{name}' started\n")
-    
-    case 'stop':
-      missing_ok = bool(kwargs.get('missing_ok', False))
-      api.stop_kernel(name, missing_ok=missing_ok)
-      stdout.write(f"Kernel '{name}' stopped\n")
-    
-    case 'restart':
-      api.restart_kernel(name)
-      stdout.write(f"Kernel '{name}' restarted\n")
-    
-    case 'list':
-      kernels = api.list_kernels()
-      if not kernels:
-        stdout.write("No kernels found\n")
-      else:
-        # Enhanced listing with runtime status
-        stdout.write("Available kernels:\n")
-        for kernel in kernels:
-          status = "running" if api.is_kernel_running(kernel) else "stopped"
-          stdout.write(f"  {kernel} ({status})\n")
-    
-    case 'execute':
-      # Get code from either --code flag or remainder arguments
-      code = kwargs.get('code') or ''.join(remainder)
-      if not code.strip():
-        raise E("No code provided to execute")
-        
-      transport = kwargs.get('transport', 'zmq')
-      timeout = float(kwargs.get('timeout', '1.0'))
-      
-      out, err = api.execute(name, code, transport=transport, timeout=timeout)
-      stdout.write(out)
-      if err:
-        stderr.write(err)
-    
-    case 'connect':
-      proc = api.connect_console(name)
-      proc.wait()
-    
-    case 'info':
-      # Get detailed information about a kernel
-      kernel_info = api.get_kernel_info(name)
-      json.dump(kernel_info, stdout, indent=2)
-      stdout.write('\n')
-    
-    case 'delete':
-      # Delete a kernel (shutdown if running and remove metadata)
-      missing_ok = bool(kwargs.get('missing_ok', False))
-      api.delete_kernel(name, missing_ok=missing_ok)
-      stdout.write(f"Kernel '{name}' deleted\n")
-    
-    case _:
-      raise E(f"Unknown interpreter operation: {op}")
 
 def main(
   args: deque[str],
