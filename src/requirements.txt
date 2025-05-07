@@ -5,13 +5,11 @@ requests ~= 2.32 # Synchronous HTTP Client/Server
 
 ### REPL
 # Core IPython/Jupyter kernel dependencies
-jupyter_client ~= 8.6
+jupyter-server ~= 2.15
+jupyter-client ~= 8.6
 ipykernel ~= 6.29
-# Optional HTTP/WebSocket transport support
-jupyter-kernel-client ~= 0.6
-# CLI console frontend
-jupyter-console ~= 6.6
-# Enhanced prompt support in IPython REPL
+ipython ~= 9.2
+jupyter-kernel-client ~= 0.6 # HTTP/WebSocket transport support
 prompt-toolkit ~= 3.0
 
 ### Some Helpful Imports ###

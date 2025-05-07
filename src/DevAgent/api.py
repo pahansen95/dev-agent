@@ -5,7 +5,13 @@ Provides a clean interface to the ontology graph and kernel management.
 """
 
 from .ontology import OntologyGraph, Node, Stage
-from .interpreter import KernelController, cli_connect, get_client, JupyterServerManager, connect_kernel_websocket
+from .interpreter import (
+  KernelController,
+  cli_connect,
+  get_client,
+  JupyterServerManager,
+  connect_kernel_websocket,
+)
 from jupyter_client import BlockingKernelClient
 import subprocess
 import json
@@ -17,6 +23,7 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union
 
 class OntologyAPI:
+
   """Python API for ontology graph operations."""
 
   @staticmethod
@@ -45,7 +52,7 @@ class OntologyAPI:
     nid: str,
     label: str,
     kind: str = "concept",
-    meta: dict | None = None
+    meta: dict | None = None,
   ) -> None:
     """Add a node to the graph."""
     if meta is None:
@@ -58,16 +65,11 @@ class OntologyAPI:
       graph.add_node(Node(nid, label, Stage.INTENT, set(), meta))
 
   @staticmethod
-  def add_edge(
-    graph: OntologyGraph,
-    src: str,
-    rel: str,
-    dst: str
-  ) -> None:
+  def add_edge(graph: OntologyGraph, src: str, rel: str, dst: str) -> None:
     """Add an edge to the graph."""
     graph.add_edge(src, rel, dst)
 
 # Public module surface
 __all__ = [
-  'OntologyAPI',
+  "OntologyAPI",
 ]

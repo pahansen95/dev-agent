@@ -9,37 +9,40 @@ from .interpreter import get_client
 
 @dataclass
 class Context:
+
   """The Agent's immediate ephemeral context."""
-  content: str = field(default='')
+
+  content: str = field(default="")
 
 @dataclass
 class Agent:
+
   """An autonomous agent executing code via a Jupyter kernel."""
 
-  def __init__(self, kernel_name: str, transport: str = 'zmq'):
+  def __init__(self, kernel_name: str, transport: str = "zmq"):
     """
-    Initialize the agent with a connection to a remote kernel.
+        Initialize the agent with a connection to a remote kernel.
 
-    Parameters
-    ----------
-    kernel_name : str
-      Name of the kernel instance (directory under .kernels).
-    transport : str
-      'zmq' for ZeroMQ transport, 'http' for HTTP/WebSocket.
-    """
+        Parameters
+        ----------
+        kernel_name : str
+          Name of the kernel instance (directory under .kernels).
+        transport : str
+          'zmq' for ZeroMQ transport, 'http' for HTTP/WebSocket.
+        """
     self.client = get_client(kernel_name, transport)
     self.ctx = Context()
 
   def repl(self) -> Generator[tuple[str, Optional[str]], str | None, None]:
     """
-    Generator that receives code statements sent in and yields (output, error).
+        Generator that receives code statements sent in and yields (output, error).
 
-    Usage:
-      agent = Agent('dev')
-      repl = agent.repl()
-      next(repl)  # prime the generator
-      output, error = runner.send("print('hello')")
-    """
+        Usage:
+          agent = Agent('dev')
+          repl = agent.repl()
+          next(repl)  # prime the generator
+          output, error = runner.send("print('hello')")
+        """
     _ = yield # Prime the generator
     assert _ is None
     code: str = yield # wait for the first code statement
@@ -50,19 +53,19 @@ class Agent:
       msg_id = self.client.execute(code)
 
       # Collect output and errors
-      output: str = ''
+      output: str = ""
       error: Optional[str] = None
 
       while True:
         msg = self.client.get_iopub_msg(timeout=1)
-        msg_type = msg['msg_type']
-        content = msg['content']
+        msg_type = msg["msg_type"]
+        content = msg["content"]
 
-        if msg_type == 'stream':
-          output += content.get('text', '')
-        elif msg_type == 'error':
-          error = ''.join(content.get('traceback', []))
-        elif msg_type == 'execute_reply':
+        if msg_type == "stream":
+          output += content.get("text", "")
+        elif msg_type == "error":
+          error = "".join(content.get("traceback", []))
+        elif msg_type == "execute_reply":
           # Execution finished
           break
 

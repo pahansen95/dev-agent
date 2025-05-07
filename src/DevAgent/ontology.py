@@ -9,17 +9,17 @@ from dataclasses import dataclass, field
 # --------------------------------------------------------------------------- #
 
 class Stage(Enum):
-    INTENT = "intent"
-    DOMAIN = "domain"
-    ABSTRACTION = "abstraction"
-    EXEC = "exec"
-    PRIMITIVE = "primitive"
+  INTENT = "intent"
+  DOMAIN = "domain"
+  ABSTRACTION = "abstraction"
+  EXEC = "exec"
+  PRIMITIVE = "primitive"
 
 class Gate(Enum):
-    DOMAIN_MODEL = "G1"
-    ABSTRACTION_SELECTION = "G2"
-    EXECUTABLE_STRUCTURING = "G3"
-    PRIMITIVE_REALISATION = "G4"
+  DOMAIN_MODEL = "G1"
+  ABSTRACTION_SELECTION = "G2"
+  EXECUTABLE_STRUCTURING = "G3"
+  PRIMITIVE_REALISATION = "G4"
 
 # --------------------------------------------------------------------------- #
 # Ontology graph – proof‑of‑concept                                           #
@@ -27,7 +27,8 @@ class Gate(Enum):
 
 @dataclass(slots=True)
 class Node:
-    """
+
+  """
     A node in the ontology graph.
 
     Parameters
@@ -43,46 +44,48 @@ class Node:
     meta:
       Arbitrary key‑value annotations (JSON‑serialisable).
     """
-    id: str
-    label: str
-    stage: Stage
-    gates_passed: Set[Gate] = field(default_factory=set)
-    meta: dict[str, Any] = field(default_factory=dict)
 
+  id: str
+  label: str
+  stage: Stage
+  gates_passed: Set[Gate] = field(default_factory=set)
+  meta: dict[str, Any] = field(default_factory=dict)
 
 @dataclass(slots=True)
 class Edge:
-  """
-  A directed relationship between two nodes.
 
-  Parameters
-  ----------
-  src:
-    Source node identifier.
-  rel:
-    Relationship predicate (e.g. ``"decomposes_to"``, ``"is_a"``).
-  dst:
-    Destination node identifier.
   """
+    A directed relationship between two nodes.
+
+    Parameters
+    ----------
+    src:
+      Source node identifier.
+    rel:
+      Relationship predicate (e.g. ``"decomposes_to"``, ``"is_a"``).
+    dst:
+      Destination node identifier.
+    """
+
   src: str
   rel: str
   dst: str
 
-
 class OntologyGraph:
+
   """
-  In‑memory ontology backed by :pyclass:`networkx.DiGraph`.
+    In‑memory ontology backed by :pyclass:`networkx.DiGraph`.
 
-  Exposes four primary surfaces:
+    Exposes four primary surfaces:
 
-  * *Mutate*  – ``add_node``, ``add_edge``, ``remove_subtree``
-  * *Search*  – ``search``
-  * *Query*   – ``query``
-  * *Walk*    – ``walk`` / ``to_paths``
+    * *Mutate*  – ``add_node``, ``add_edge``, ``remove_subtree``
+    * *Search*  – ``search``
+    * *Query*   – ``query``
+    * *Walk*    – ``walk`` / ``to_paths``
 
-  The ``decomposes_to`` relation is treated as *structural*: it must not form
-  cycles. Other relations are unconstrained.
-  """
+    The ``decomposes_to`` relation is treated as *structural*: it must not form
+    cycles. Other relations are unconstrained.
+    """
 
   # ----------------------------------------------------------------------- #
   # Construction                                                            #
@@ -91,10 +94,9 @@ class OntologyGraph:
     self._g: nx.MultiDiGraph = nx.MultiDiGraph()
 
   # relation‑specific view for structural checks/traversals
-  def _decompose_view(self) -> nx.MultiDiGraph:          # type: ignore[name-defined]
+  def _decompose_view(self) -> nx.MultiDiGraph: # type: ignore[name-defined]
     """Subgraph containing only 'decomposes_to' edges."""
-    edges = [(u, v, k) for u, v, k in self._g.edges(keys=True)
-             if k == "decomposes_to"]
+    edges = [(u, v, k) for u, v, k in self._g.edges(keys=True) if k == "decomposes_to"]
     return self._g.edge_subgraph(edges).copy()
 
   # ----------------------------------------------------------------------- #
@@ -105,19 +107,19 @@ class OntologyGraph:
     if node.id in self._g:
       raise ValueError(f"Node id clash: {node.id!r}")
     self._g.add_node(
-        node.id,
-        label=node.label,
-        stage=node.stage,
-        gates_passed=set(node.gates_passed),
-        meta=dict(node.meta),
+      node.id,
+      label=node.label,
+      stage=node.stage,
+      gates_passed=set(node.gates_passed),
+      meta=dict(node.meta),
     )
 
   def add_edge(self, src: str, rel: str, dst: str) -> None:
     """
-    Create a directed edge ``(src, rel, dst)``.
+        Create a directed edge ``(src, rel, dst)``.
 
-    Both *src* and *dst* must already exist.
-    """
+        Both *src* and *dst* must already exist.
+        """
     if src not in self._g or dst not in self._g:
       raise KeyError("Both endpoints must exist before adding an edge.")
     self._g.add_edge(src, dst, key=rel)
@@ -131,32 +133,32 @@ class OntologyGraph:
   # --------------------------------------------------------------------- #
   def add_decomposition(self, parent: str, child: str) -> None:
     """
-    Shorthand for ``add_edge(parent, "decomposes_to", child)``.
-    Enforces the same cycle check semantics as :py:meth:`add_edge`.
-    """
+        Shorthand for ``add_edge(parent, "decomposes_to", child)``.
+        Enforces the same cycle check semantics as :py:meth:`add_edge`.
+        """
     self.add_edge(parent, "decomposes_to", child)
 
   def add_is_a(self, subclass: str, superclass: str) -> None:
     """
-    Shorthand for ``add_edge(subclass, "is_a", superclass)``.
-    """
+        Shorthand for ``add_edge(subclass, "is_a", superclass)``.
+        """
     self.add_edge(subclass, "is_a", superclass)
 
   def add_dependency(self, source: str, target: str) -> None:
     """
-    Shorthand for ``add_edge(source, "depends_on", target)``.
-    """
+        Shorthand for ``add_edge(source, "depends_on", target)``.
+        """
     self.add_edge(source, "depends_on", target)
 
   def remove_subtree(self, root: str) -> None:
     """
-    Delete *root* and all descendants reachable via ``decomposes_to`` edges.
-    """
+        Delete *root* and all descendants reachable via ``decomposes_to`` edges.
+        """
     if root not in self._g:
       raise KeyError(root)
     targets = nx.descendants(self._decompose_view(), root)
     self._g.remove_nodes_from(targets | {root})
-  
+
   # Facade helpers reflecting HDD vocabulary --------------------------------
 
   def add_intent(self, id: str, label: str, **meta: Any) -> str:
@@ -210,8 +212,8 @@ class OntologyGraph:
   # ----------------------------------------------------------------------- #
   def search(self, text: str) -> list[str]:
     """
-    Fuzzy label/meta match (case‑insensitive). Returns matching node ids.
-    """
+        Fuzzy label/meta match (case‑insensitive). Returns matching node ids.
+        """
     t = text.lower()
     hits: list[str] = []
     for nid, data in self._g.nodes(data=True):
@@ -224,37 +226,27 @@ class OntologyGraph:
           break
     return hits
 
-  def query(self,
-            src: str | None = None,
-            rel: str | None = None,
-            dst: str | None = None) -> list[Edge]:
+  def query(self, src: str | None = None, rel: str | None = None, dst: str | None = None) -> list[Edge]:
     """
-    Structured triple pattern. ``None`` is a wildcard.
-    """
-    edges_iter = (
-      self._g.out_edges(src, keys=True) if src is not None
-      else self._g.edges(keys=True)
-    )
-    return [
-      Edge(u, k, v)
-      for u, v, k in edges_iter
-      if (dst is None or v == dst) and (rel is None or k == rel)
-    ]
+        Structured triple pattern. ``None`` is a wildcard.
+        """
+    edges_iter = (self._g.out_edges(src, keys=True) if src is not None else self._g.edges(keys=True))
+    return [Edge(u, k, v) for u, v, k in edges_iter if (dst is None or v == dst) and (rel is None or k == rel)]
 
   # ----------------------------------------------------------------------- #
   # Walks                                                                   #
   # ----------------------------------------------------------------------- #
   def walk(self, root: str, *, order: str = "dfs") -> Iterator[str]:
     """
-    Traverse from *root* through **all** outgoing edges using NetworkX helpers.
+        Traverse from *root* through **all** outgoing edges using NetworkX helpers.
 
-    Parameters
-    ----------
-    root:
-      Starting node id.
-    order:
-      ``"dfs"`` (depth‑first, preorder) or ``"bfs"`` (breadth‑first).
-    """
+        Parameters
+        ----------
+        root:
+          Starting node id.
+        order:
+          ``"dfs"`` (depth‑first, preorder) or ``"bfs"`` (breadth‑first).
+        """
     if root not in self._g:
       raise KeyError(root)
     if order == "dfs":
@@ -267,17 +259,16 @@ class OntologyGraph:
 
   def to_paths(self, root: str) -> list[list[str]]:
     """
-    Return all decomposition paths rooted at *root*.
+        Return all decomposition paths rooted at *root*.
 
-    Only edges with ``rel == 'decomposes_to'`` are followed.
-    """
+        Only edges with ``rel == 'decomposes_to'`` are followed.
+        """
     if root not in self._g:
       raise KeyError(root)
     paths, stack = [], [(root, [root])]
     while stack:
       nid, path = stack.pop()
-      children = [succ for succ in self._g.successors(nid)
-                  if self._g.has_edge(nid, succ, key="decomposes_to")]
+      children = [succ for succ in self._g.successors(nid) if self._g.has_edge(nid, succ, key="decomposes_to")]
       if not children:
         paths.append(path)
       else:
@@ -295,7 +286,7 @@ class OntologyGraph:
   # ----------------------------------------------------------------------- #
   # Convenience dunders                                                     #
   # ----------------------------------------------------------------------- #
-  def __len__(self) -> int:         # number of nodes
+  def __len__(self) -> int: # number of nodes
     return self._g.number_of_nodes()
 
   def __contains__(self, nid: str) -> bool:
@@ -313,17 +304,13 @@ class OntologyGraph:
         "stage": data.get("stage").value if data.get("stage") else None,
         "gates_passed": [g.value for g in data.get("gates_passed", set())],
         "meta": data.get("meta", {}),
-      }
-      for n, data in self._g.nodes(data=True)
+      } for n, data in self._g.nodes(data=True)
     ]
-    edges = [
-      {
-        "src": u,
-        "rel": k,
-        "dst": v,
-      }
-      for u, v, k in self._g.edges(keys=True)
-    ]
+    edges = [{
+      "src": u,
+      "rel": k,
+      "dst": v,
+    } for u, v, k in self._g.edges(keys=True)]
     return {"nodes": nodes, "edges": edges}
 
   @classmethod
@@ -333,13 +320,7 @@ class OntologyGraph:
     for n in payload.get("nodes", []):
       stage = Stage(n["stage"]) if "stage" in n else None
       gates_passed = set(Gate(g) for g in n.get("gates_passed", []))
-      node = Node(
-        n["id"],
-        n["label"],
-        stage,
-        gates_passed,
-        n.get("meta", {})
-      )
+      node = Node(n["id"], n["label"], stage, gates_passed, n.get("meta", {}))
       g.add_node(node)
     for e in payload.get("edges", []):
       g.add_edge(e["src"], e["rel"], e["dst"])
