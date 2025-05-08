@@ -142,7 +142,7 @@ def handle_interpreter_server(
   else:
     raise E(f"Unknown server action: {action}")
 
-def handle_interpreter_kernel(
+def handle_interpreter_session(
   pop_arg: Callable[[str], str],
   get_kwarg: Callable[[str, Union[str, bool, Any]], str],
   env: dict[str, str],
@@ -152,23 +152,176 @@ def handle_interpreter_kernel(
   remainder: deque[str],
   E: type[Exception],
 ):
-  """Handle the 'interpreter kernel' subcommand.
+  """Handle the 'interpreter session' subcommand.
   
-  Placeholder for future kernel operations:
-  - create: Create a new kernel
-  - list: List available kernels
-  - start: Start a kernel
-  - stop: Stop a kernel
-  - restart: Restart a kernel
-  - delete: Delete a kernel
+  Supports the following actions:
+  - create: Create a new session
+  - list: List all active sessions
+  - execute: Execute code in a session
+  - interrupt: Interrupt execution in a session
+  - restart: Restart a session's kernel
+  - close: Close a session
   
   Examples:
-    python -m DevAgent interpreter kernel list
-    python -m DevAgent interpreter kernel start <name>
+    python -m DevAgent interpreter session create
+    python -m DevAgent interpreter session create --id=dev_session
+    python -m DevAgent interpreter session list
+    python -m DevAgent interpreter session execute --code="print('hello')" --session=dev_session
   """
-  # Placeholder for kernel operations
-  # To be implemented in future
-  raise E("Kernel operations not yet implemented")
+  # Get the session action
+  try:
+    action = pop_arg("action")
+  except Exception:
+    # Show usage if no action provided
+    stdout.write("Usage: python -m DevAgent interpreter session <action> [options]\n")
+    stdout.write("Actions: create, list, execute, interrupt, restart, close\n")
+    return
+
+  # Get base directory from kwargs or use current directory
+  try:
+    base_dir = get_kwarg("dir")
+  except:
+    base_dir = os.path.join(os.getcwd(), '.devagent')
+
+  # Create the API instance
+  from .api import InterpreterAPI
+  api = InterpreterAPI(base_dir)
+
+  # Handle different session actions
+  if action == "create":
+    # Get optional session ID and kernel name
+    try:
+      session_id = get_kwarg("id", "main")
+    except:
+      session_id = "main"
+
+    try:
+      kernel_name = get_kwarg("kernel", "python3")
+    except:
+      kernel_name = "python3"
+
+    try:
+      # Start the server if not running
+      api.start()
+
+      # Create the session
+      result = api.create_session(session_id, kernel_name)
+      stdout.write(f"Session created: {result['id']}\n")
+      stdout.write(f"Status: {result['status']}\n")
+    except Exception as e:
+      raise E(f"Failed to create session: {str(e)}")
+
+  elif action == "list":
+    try:
+      # List active sessions
+      sessions = api.list_sessions()
+      if sessions:
+        stdout.write("Active sessions:\n")
+        for session_id in sessions:
+          session_info = api.get_session(session_id)
+          status = session_info["status"] if session_info else "unknown"
+          kernel = session_info.get("kernel_name", "unknown") if session_info else "unknown"
+          stdout.write(f"  {session_id} (status: {status}, kernel: {kernel})\n")
+      else:
+        stdout.write("No active sessions\n")
+    except Exception as e:
+      raise E(f"Failed to list sessions: {str(e)}")
+
+  elif action == "execute":
+    # Get required code and optional session ID
+    code = get_kwarg("code")
+
+    try:
+      session_id = get_kwarg("session", "main")
+    except:
+      session_id = "main"
+
+    try:
+      outfile = get_kwarg("outfile")
+      use_outfile = True
+    except:
+      use_outfile = False
+
+    try:
+      # Execute the code
+      result = api.execute(code, session_id)
+
+      if use_outfile:
+        # Write results to file
+        with open(outfile, "w") as f:
+          if result["stdout"]:
+            f.write(result["stdout"])
+          if result["error"]:
+            f.write("\nERROR:\n")
+            f.write(result["error"])
+        stdout.write(f"Results written to {outfile}\n")
+      else:
+        # Write results to stdout
+        if result["stdout"]:
+          stdout.write(result["stdout"])
+          # Add newline if not already present
+          if not result["stdout"].endswith("\n"):
+            stdout.write("\n")
+
+        if result["error"]:
+          stdout.write("ERROR:\n")
+          stdout.write(result["error"])
+          stdout.write("\n")
+
+      # Report success/failure
+      if not result["success"]:
+        stdout.write("Execution failed\n")
+    except Exception as e:
+      raise E(f"Failed to execute code: {str(e)}")
+
+  elif action == "interrupt":
+    try:
+      session_id = get_kwarg("session", "main")
+    except:
+      session_id = "main"
+
+    try:
+      # Interrupt the session
+      result = api.interrupt(session_id)
+      if result:
+        stdout.write(f"Session {session_id} interrupted successfully\n")
+      else:
+        stdout.write(f"Failed to interrupt session {session_id}\n")
+    except Exception as e:
+      raise E(f"Failed to interrupt session: {str(e)}")
+
+  elif action == "restart":
+    try:
+      session_id = get_kwarg("session", "main")
+    except:
+      session_id = "main"
+
+    try:
+      # Restart the session
+      result = api.restart_session(session_id)
+      if result:
+        stdout.write(f"Session {session_id} restarted successfully\n")
+      else:
+        stdout.write(f"Failed to restart session {session_id}\n")
+    except Exception as e:
+      raise E(f"Failed to restart session: {str(e)}")
+
+  elif action == "close":
+    # Session ID is required for close
+    session_id = get_kwarg("session")
+
+    try:
+      # Close the session
+      result = api.close_session(session_id)
+      if result:
+        stdout.write(f"Session {session_id} closed successfully\n")
+      else:
+        stdout.write(f"Failed to close session {session_id} (not found)\n")
+    except Exception as e:
+      raise E(f"Failed to close session: {str(e)}")
+
+  else:
+    raise E(f"Unknown session action: {action}")
 
 def handle_interpreter(
   pop_arg: Callable[[str], str],
@@ -189,7 +342,7 @@ def handle_interpreter(
   Examples:
     python -m DevAgent interpreter server up
     python -m DevAgent interpreter server status
-    python -m DevAgent interpreter kernel list
+    python -m DevAgent interpreter session list
   """
 
   # Get the interpreter operation (e.g., "server")
@@ -197,8 +350,8 @@ def handle_interpreter(
 
   if op == "server":
     handle_interpreter_server(pop_arg, get_kwarg, env, stdin, stdout, kwargs, remainder, E)
-  elif op == "kernel":
-    handle_interpreter_kernel(pop_arg, get_kwarg, env, stdin, stdout, kwargs, remainder, E)
+  elif op == "session":
+    handle_interpreter_session(pop_arg, get_kwarg, env, stdin, stdout, kwargs, remainder, E)
   else:
     raise E(f"Unknown interpreter operation: {op}")
 

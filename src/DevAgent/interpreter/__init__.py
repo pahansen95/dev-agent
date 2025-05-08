@@ -164,6 +164,6 @@ from typing import Dict, List, Optional, Any, Union, Tuple
 from pathlib import Path
 
 from .server import ServerController
-from .session import StateManager, KernelController, SessionManager
+from .session import Session, KernelController, SessionManager
 
-__all__ = ['ServerController', 'StateManager', 'KernelController', 'SessionManager']
+__all__ = ['ServerController', 'Session', 'KernelController', 'SessionManager']
