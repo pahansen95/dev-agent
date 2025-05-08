@@ -161,122 +161,86 @@ class InterpreterServerAPI(API):
         """
     return self.controller.purge()
 
-class InterpreterAPI(API):
+class InterpreterSessionAPI:
 
   """
-    Main entry point for the DevAgent Interpreter.
+    API for managing DevAgent interpreter sessions.
     
-    This class integrates server and session management, providing a unified
-    interface for creating sessions, executing code, and managing the interpreter
-    lifecycle.
+    This provides a clean interface for session management operations,
+    abstracting the underlying implementation details.
     """
 
   def __init__(self, base_dir: Optional[Union[str, Path]] = None):
     """
-        Initialize the interpreter API.
+        Initialize the session API.
         
         Parameters
         ----------
         base_dir : str or Path, optional
-            Base directory for interpreter state and sessions
+            Base directory for session storage
         """
 
-    self.base_dir = pathlib.Path(base_dir or os.getcwd())
-    logger.info(f"Initializing InterpreterAPI with base_dir={self.base_dir}")
-
-    # Initialize components
-    self.server_controller = ServerController(base_dir)
-    self.session_manager = SessionManager(base_dir)
-    self.server_running = False
-
-    # Register shutdown handler
-    atexit.register(self.shutdown)
-
-  def start(self) -> InterpreterAPI:
-    """
-        Start the interpreter server.
-        
-        Returns
-        -------
-        InterpreterAPI
-            Self for method chaining
-        """
-    if not self.server_running:
-      logger.info("Starting interpreter server")
-      try:
-        # Start the server
-        connection_info = self.server_controller.up()
-        self.server_running = True
-        logger.info(f"Server started with connection info: {connection_info}")
-      except Exception as e:
-        logger.error(f"Failed to start server: {str(e)}")
-        raise RuntimeError(f"Failed to start interpreter server: {str(e)}")
-    else:
-      logger.debug("Server already running")
-
-    return self
-
-  def ensure_server_running(self) -> None:
-    """Ensure the server is running, starting it if needed."""
-    if not self.server_running:
-      self.start()
+    self.base_dir = Path(base_dir or os.getcwd())
+    self.session_manager = SessionManager(self.base_dir)
+    logger.info(f"Initialized InterpreterSessionAPI with base_dir={self.base_dir}")
 
   def create_session(self, session_id: str = "main", kernel_name: str = "python3") -> Dict[str, Any]:
     """
-        Create a new session.
+        Create a new session or return existing one.
         
         Parameters
         ----------
-        session_id : str, default="main"
-            Unique identifier for the session
-        kernel_name : str, default="python3"
-            Name of the kernel to use
+        session_id : str
+            Unique identifier for the session (default: "main")
+        kernel_name : str
+            Name of the kernel to use (default: "python3")
             
         Returns
         -------
         Dict[str, Any]
-            Session information
+            Session information dictionary
         """
-    self.ensure_server_running()
-
     try:
-      logger.info(f"Creating session: {session_id}")
       session = self.session_manager.create_session(session_id, kernel_name)
-
-      return {"id": session.id, "status": "active", "created_at": time.time()}
+      return self._session_to_dict(session)
     except Exception as e:
-      logger.error(f"Failed to create session {session_id}: {str(e)}")
-      raise RuntimeError(f"Failed to create session: {str(e)}")
+      logger.error(f"Error creating session {session_id}: {str(e)}")
+      return {"id": session_id, "error": str(e), "success": False}
 
-  def get_session(self, session_id: str = "main") -> Optional[Dict[str, Any]]:
+  def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
     """
         Get information about an existing session.
         
         Parameters
         ----------
-        session_id : str, default="main"
+        session_id : str
             Unique identifier for the session
             
         Returns
         -------
         Optional[Dict[str, Any]]
-            Session information or None if not found
+            Session information dictionary or None if not found
         """
     session = self.session_manager.get_session(session_id)
     if session:
-      return {"id": session.id, "status": "active", "kernel_name": session.kernel.kernel_name if session.kernel else None}
+      return self._session_to_dict(session)
     return None
 
-  def list_sessions(self) -> List[str]:
+  def list_sessions(self) -> List[Dict[str, Any]]:
     """
-        List all active session IDs.
+        List all available sessions.
         
         Returns
         -------
-        List[str]
-            List of session IDs
+        List[Dict[str, Any]]
+            List of session information dictionaries
         """
-    return self.session_manager.list_sessions()
+    sessions = []
+    for session_id in self.session_manager.list_sessions():
+      session = self.session_manager.get_session(session_id)
+      if session:
+        sessions.append(self._session_to_dict(session))
+    return sessions
 
   def execute(self, code: str, session_id: str = "main") -> Dict[str, Any]:
     """
@@ -286,74 +250,35 @@ class InterpreterAPI(API):
         ----------
         code : str
             Code to execute
-        session_id : str, default="main"
-            Session identifier
+        session_id : str
+            Session identifier (default: "main")
             
         Returns
         -------
         Dict[str, Any]
-            Execution result with stdout and error information
+            Execution result with stdout, error, and success fields
         """
-    self.ensure_server_running()
-
     # Get or create session
     session = self.session_manager.get_session(session_id)
     if not session:
-      logger.info(f"Session {session_id} not found, creating new session")
+      logger.info(f"Session {session_id} not found, creating it")
       session = self.session_manager.create_session(session_id)
 
     # Execute code
     try:
       logger.debug(f"Executing code in session {session_id}")
+      start_time = time.time()
       stdout, error = session.execute(code)
+      execution_time = time.time() - start_time
 
-      result = {"success": error is None, "stdout": stdout, "error": error}
-      return result
+      return {"stdout": stdout, "error": error, "success": error is None, "execution_time": execution_time}
     except Exception as e:
-      logger.error(f"Execution error in session {session_id}: {str(e)}")
-      return {"success": False, "stdout": "", "error": f"Internal error: {str(e)}"}
+      logger.error(f"Error executing code in session {session_id}: {str(e)}")
+      return {"stdout": "", "error": str(e), "success": False, "execution_time": time.time() - start_time}
 
-  def interrupt(self, session_id: str = "main") -> bool:
+  def interrupt(self, session_id: str) -> Dict[str, Any]:
     """
-        Interrupt the execution in a session.
-        
-        Parameters
-        ----------
-        session_id : str, default="main"
-            Session identifier
-            
-        Returns
-        -------
-        bool
-            True if interrupt succeeded
-        """
-    session = self.session_manager.get_session(session_id)
-    if session:
-      return session.interrupt()
-    return False
-
-  def restart_session(self, session_id: str = "main") -> bool:
-    """
-        Restart a session's kernel.
-        
-        Parameters
-        ----------
-        session_id : str, default="main"
-            Session identifier
-            
-        Returns
-        -------
-        bool
-            True if restart succeeded
-        """
-    session = self.session_manager.get_session(session_id)
-    if session:
-      return session.restart()
-    return False
-
-  def close_session(self, session_id: str) -> bool:
-    """
-        Close a specific session.
+        Interrupt execution in a session.
         
         Parameters
         ----------
@@ -362,49 +287,130 @@ class InterpreterAPI(API):
             
         Returns
         -------
-        bool
-            True if session was closed
+        Dict[str, Any]
+            Result dictionary with success field
         """
-    return self.session_manager.shutdown_session(session_id)
+    session = self.session_manager.get_session(session_id)
+    if not session:
+      logger.warning(f"Cannot interrupt - session {session_id} not found")
+      return {"success": False, "error": f"Session {session_id} not found"}
 
-  def server_status(self) -> Dict[str, Any]:
+    try:
+      result = session.interrupt()
+      return {"success": result}
+    except Exception as e:
+      logger.error(f"Error interrupting session {session_id}: {str(e)}")
+      return {"success": False, "error": str(e)}
+
+  def restart(self, session_id: str) -> Dict[str, Any]:
     """
-        Get the current server status.
+        Restart a session's kernel.
+        
+        Parameters
+        ----------
+        session_id : str
+            Session identifier
+            
+        Returns
+        -------
+        Dict[str, Any]
+            Result dictionary with success field
+        """
+    session = self.session_manager.get_session(session_id)
+    if not session:
+      logger.warning(f"Cannot restart - session {session_id} not found")
+      return {"success": False, "error": f"Session {session_id} not found"}
+
+    try:
+      result = session.restart()
+      return {"success": result, "session": self._session_to_dict(session) if result else None}
+    except Exception as e:
+      logger.error(f"Error restarting session {session_id}: {str(e)}")
+      return {"success": False, "error": str(e)}
+
+  def delete_session(self, session_id: str) -> Dict[str, Any]:
+    """
+        Delete a session.
+        
+        Parameters
+        ----------
+        session_id : str
+            Session identifier
+            
+        Returns
+        -------
+        Dict[str, Any]
+            Result dictionary with success field
+        """
+    try:
+      result = self.session_manager.shutdown_session(session_id)
+      return {"success": result}
+    except Exception as e:
+      logger.error(f"Error deleting session {session_id}: {str(e)}")
+      return {"success": False, "error": str(e)}
+
+  def shutdown(self) -> Dict[str, Any]:
+    """
+        Shut down all sessions.
         
         Returns
         -------
         Dict[str, Any]
-            Server status information
+            Result dictionary with success field
         """
-    status = self.server_controller.status()
-    status['active_sessions'] = len(self.list_sessions())
-    return status
-
-  def shutdown(self) -> None:
-    """
-        Shut down the interpreter completely.
-        
-        This stops all sessions and the server.
-        """
-    logger.info("Shutting down interpreter")
-
-    # Shut down sessions first
     try:
+      session_count = len(self.session_manager.list_sessions())
       self.session_manager.shutdown()
+      return {"success": True, "sessions_closed": session_count}
     except Exception as e:
       logger.error(f"Error shutting down sessions: {str(e)}")
+      return {"success": False, "error": str(e)}
 
-    # Then shut down server
-    if self.server_running:
-      try:
-        self.server_controller.down()
-        self.server_running = False
-        logger.info("Server stopped")
-      except Exception as e:
-        logger.error(f"Error shutting down server: {str(e)}")
+  def _session_to_dict(self, session) -> Dict[str, Any]:
+    """
+        Convert a Session object to a dictionary representation.
+        
+        Parameters
+        ----------
+        session : Session
+            Session object
+            
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary with session information
+        """
+    return {
+      "id": session.id,
+      "kernel_alive": session.kernel is not None and session.kernel.is_alive(),
+      "kernel_name": session.kernel.kernel_name if session.kernel else None,
+      "session_dir": str(session.session_dir),
+      "last_activity": self._get_last_activity(session)
+    }
+
+  def _get_last_activity(self, session) -> Optional[float]:
+    """
+        Get the last activity timestamp from a session.
+        
+        Parameters
+        ----------
+        session : Session
+            Session object
+            
+        Returns
+        -------
+        Optional[float]
+            Timestamp of last activity or None
+        """
+    try:
+      state = session._load_state()
+      return state.get("last_activity")
+    except:
+      return None
 
 # Public module surface
 __all__ = [
   "OntologyAPI",
   "InterpreterServerAPI",
+  "InterpreterSessionAPI",
 ]

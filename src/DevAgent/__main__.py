@@ -149,10 +149,11 @@ def handle_interpreter_session(
   stdin: TextIO,
   stdout: TextIO,
   kwargs: dict[str, str],
-  remainder: deque[str],
+  remainder: Deque[str],
   E: type[Exception],
 ):
-  """Handle the 'interpreter session' subcommand.
+  """
+  Handle the 'interpreter session' subcommand.
   
   Supports the following actions:
   - create: Create a new session
@@ -160,7 +161,7 @@ def handle_interpreter_session(
   - execute: Execute code in a session
   - interrupt: Interrupt execution in a session
   - restart: Restart a session's kernel
-  - close: Close a session
+  - delete: Delete a session
   
   Examples:
     python -m DevAgent interpreter session create
@@ -174,7 +175,7 @@ def handle_interpreter_session(
   except Exception:
     # Show usage if no action provided
     stdout.write("Usage: python -m DevAgent interpreter session <action> [options]\n")
-    stdout.write("Actions: create, list, execute, interrupt, restart, close\n")
+    stdout.write("Actions: create, list, execute, interrupt, restart, delete\n")
     return
 
   # Get base directory from kwargs or use current directory
@@ -184,8 +185,7 @@ def handle_interpreter_session(
     base_dir = os.path.join(os.getcwd(), '.devagent')
 
   # Create the API instance
-  from .api import InterpreterAPI
-  api = InterpreterAPI(base_dir)
+  api = InterpreterSessionAPI(base_dir)
 
   # Handle different session actions
   if action == "create":
@@ -201,13 +201,14 @@ def handle_interpreter_session(
       kernel_name = "python3"
 
     try:
-      # Start the server if not running
-      api.start()
-
       # Create the session
       result = api.create_session(session_id, kernel_name)
-      stdout.write(f"Session created: {result['id']}\n")
-      stdout.write(f"Status: {result['status']}\n")
+      if result.get("success", True): # Default to True if success not present
+        stdout.write(f"Session created: {result['id']}\n")
+        stdout.write(f"Kernel name: {result.get('kernel_name', kernel_name)}\n")
+        stdout.write(f"Session directory: {result.get('session_dir', 'unknown')}\n")
+      else:
+        stdout.write(f"Failed to create session: {result.get('error', 'Unknown error')}\n")
     except Exception as e:
       raise E(f"Failed to create session: {str(e)}")
 
@@ -217,11 +218,10 @@ def handle_interpreter_session(
       sessions = api.list_sessions()
       if sessions:
         stdout.write("Active sessions:\n")
-        for session_id in sessions:
-          session_info = api.get_session(session_id)
-          status = session_info["status"] if session_info else "unknown"
-          kernel = session_info.get("kernel_name", "unknown") if session_info else "unknown"
-          stdout.write(f"  {session_id} (status: {status}, kernel: {kernel})\n")
+        for session in sessions:
+          kernel_status = "alive" if session.get("kernel_alive", False) else "dead"
+          kernel_name = session.get("kernel_name", "unknown")
+          stdout.write(f"  {session['id']} (kernel: {kernel_name}, status: {kernel_status})\n")
       else:
         stdout.write("No active sessions\n")
     except Exception as e:
@@ -249,27 +249,31 @@ def handle_interpreter_session(
       if use_outfile:
         # Write results to file
         with open(outfile, "w") as f:
-          if result["stdout"]:
+          if result.get("stdout"):
             f.write(result["stdout"])
-          if result["error"]:
+          if result.get("error"):
             f.write("\nERROR:\n")
             f.write(result["error"])
         stdout.write(f"Results written to {outfile}\n")
       else:
         # Write results to stdout
-        if result["stdout"]:
+        if result.get("stdout"):
           stdout.write(result["stdout"])
           # Add newline if not already present
-          if not result["stdout"].endswith("\n"):
+          if result["stdout"] and not result["stdout"].endswith("\n"):
             stdout.write("\n")
 
-        if result["error"]:
+        if result.get("error"):
           stdout.write("ERROR:\n")
           stdout.write(result["error"])
           stdout.write("\n")
 
+      # Report execution time if available
+      if "execution_time" in result:
+        stdout.write(f"Execution time: {result['execution_time']:.3f} seconds\n")
+
       # Report success/failure
-      if not result["success"]:
+      if not result.get("success", False):
         stdout.write("Execution failed\n")
     except Exception as e:
       raise E(f"Failed to execute code: {str(e)}")
@@ -283,10 +287,10 @@ def handle_interpreter_session(
     try:
       # Interrupt the session
       result = api.interrupt(session_id)
-      if result:
+      if result.get("success", False):
         stdout.write(f"Session {session_id} interrupted successfully\n")
       else:
-        stdout.write(f"Failed to interrupt session {session_id}\n")
+        stdout.write(f"Failed to interrupt session {session_id}: {result.get('error', 'Unknown error')}\n")
     except Exception as e:
       raise E(f"Failed to interrupt session: {str(e)}")
 
@@ -298,27 +302,27 @@ def handle_interpreter_session(
 
     try:
       # Restart the session
-      result = api.restart_session(session_id)
-      if result:
+      result = api.restart(session_id)
+      if result.get("success", False):
         stdout.write(f"Session {session_id} restarted successfully\n")
       else:
-        stdout.write(f"Failed to restart session {session_id}\n")
+        stdout.write(f"Failed to restart session {session_id}: {result.get('error', 'Unknown error')}\n")
     except Exception as e:
       raise E(f"Failed to restart session: {str(e)}")
 
-  elif action == "close":
-    # Session ID is required for close
+  elif action == "delete":
+    # Session ID is required for delete
     session_id = get_kwarg("session")
 
     try:
-      # Close the session
-      result = api.close_session(session_id)
-      if result:
-        stdout.write(f"Session {session_id} closed successfully\n")
+      # Delete the session
+      result = api.delete_session(session_id)
+      if result.get("success", False):
+        stdout.write(f"Session {session_id} deleted successfully\n")
       else:
-        stdout.write(f"Failed to close session {session_id} (not found)\n")
+        stdout.write(f"Failed to delete session {session_id}: {result.get('error', 'Session not found')}\n")
     except Exception as e:
-      raise E(f"Failed to close session: {str(e)}")
+      raise E(f"Failed to delete session: {str(e)}")
 
   else:
     raise E(f"Unknown session action: {action}")
