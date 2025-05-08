@@ -172,15 +172,17 @@ class InterpreterSessionAPI:
 
   def __init__(self, base_dir: Optional[Union[str, Path]] = None):
     """
-        Initialize the session API.
-        
-        Parameters
-        ----------
-        base_dir : str or Path, optional
-            Base directory for session storage
-        """
+    Initialize the session API.
+    
+    Parameters
+    ----------
+    base_dir : str or Path, optional
+        Base directory for session storage
+    """
 
     self.base_dir = Path(base_dir or os.getcwd())
+    # Ensure the base directory exists
+    os.makedirs(self.base_dir, exist_ok=True)
     self.session_manager = SessionManager(self.base_dir)
     logger.info(f"Initialized InterpreterSessionAPI with base_dir={self.base_dir}")
 
