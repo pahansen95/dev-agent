@@ -3,7 +3,33 @@ Filesystem operations for the DevAgent Interpreter.
 
 This module provides the essential filesystem operations needed by the
 interpreter, including directory structure management, atomic file
-operations, and symlink handling.
+operations, symlink handling, path resolution, and thread-safe file access.
+
+Key features:
+- Directory structure management for sessions and kernels
+- Atomic JSON file operations for reliable persistence
+- Symlink creation and management for by-name access
+- Path resolution utilities for sessions and kernels
+- Thread-safe file operations via FileLock
+- Error-resilient directory and file operations
+
+The filesystem structure is organized as follows:
+- base_dir/
+  - by-id/            # Storage by ID
+    - sessions/       # Session directories by ID
+      - sid-*/        # Individual session directories
+        - kernels/    # Kernels for this session
+          - kid-*/    # Individual kernel directories
+            - workspace/  # Kernel working directory
+            - metadata.json  # Kernel metadata
+            - connection.json # Kernel connection info
+        - metadata.json  # Session metadata
+  - by-name/         # Symlinks to sessions by name
+    - session-name/  # Symlink to session directory
+      - kernel-name/  # Symlinks to kernel directories
+  - registry/        # Name-to-ID mappings
+    - sessions.json  # Session name to ID mappings
+    - kernels.json   # Kernel name to ID mappings
 """
 
 import os
@@ -142,6 +168,54 @@ def remove_directory(path: Path) -> bool:
   except Exception as e:
     logger.error(f"Error removing directory {path}: {e}")
     return False
+
+def find_session_for_kernel(base_dir: Path, kernel_id: str) -> Optional[Path]:
+  """Find the session directory containing a kernel."""
+  for session_dir in (base_dir / "by-id" / "sessions").glob("*"):
+    kernel_path = session_dir / "kernels" / kernel_id
+    if kernel_path.exists():
+      return session_dir
+  return None
+
+def resolve_kernel_paths(base_dir: Path, kernel_id: str) -> tuple[Optional[Path], Optional[Path]]:
+  """
+  Resolve a kernel ID to session and kernel paths.
+  
+  Args:
+      base_dir: Base directory for interpreter
+      kernel_id: The kernel ID
+      
+  Returns:
+      Tuple of (session_path, kernel_path) or (None, None) if not found
+  """
+  session_path = find_session_for_kernel(base_dir, kernel_id)
+  if not session_path:
+    return None, None
+  
+  kernel_path = get_kernel_path(session_path, kernel_id)
+  return session_path, kernel_path
+
+def resolve_session_reference(base_dir: Path, reference: str) -> Optional[Path]:
+  """
+  Resolve a session reference to a path.
+  
+  Args:
+      base_dir: Base directory for interpreter
+      reference: Session name or ID
+      
+  Returns:
+      Path to session directory or None if not found
+  """
+  # If it's a session ID
+  if reference.startswith("sid-"):
+    return get_session_path(base_dir, reference)
+  
+  # Otherwise it should be a symlink in by-name
+  symlink_path = base_dir / "by-name" / reference
+  if symlink_path.exists() and symlink_path.is_symlink():
+    return symlink_path.resolve()
+  
+  return None
 
 class FileLock:
 

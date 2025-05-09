@@ -2,7 +2,20 @@
 API for the DevAgent Interpreter.
 
 This module provides the InterpreterAPI class which is the primary entry point 
-for external consumers to interact with the interpreter.
+for external consumers to interact with the interpreter. The API offers a complete
+suite of operations for managing sessions and kernels, including creation, retrieval,
+listing, and deletion of these resources, as well as code execution within kernels.
+
+The InterpreterAPI handles all the complexity of session and kernel management,
+including reference resolution (by name or ID), resource lifecycle management,
+and maintaining the filesystem-based persistence layer.
+
+Key responsibilities:
+- Session management (create, get, list, delete)
+- Kernel management across sessions (create, get, list, delete)
+- Code execution in kernels
+- Reference resolution (session/kernel names or IDs)
+- Resource cleanup on shutdown
 """
 
 import os
@@ -29,7 +42,8 @@ class InterpreterAPI:
             base_dir: Base directory path. If None, uses current directory.
         """
     # Set up base directory
-    self.base_dir = Path(base_dir or os.getcwd()) / ".devagent"
+    if base_dir is None: self.base_dir = base_dir
+    else: self.base_dir = Path(os.getcwd())
     self.base_dir.mkdir(parents=True, exist_ok=True)
 
     # Ensure directory structure

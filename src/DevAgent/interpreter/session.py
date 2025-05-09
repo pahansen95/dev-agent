@@ -3,6 +3,24 @@ Session management for the DevAgent Interpreter.
 
 This module provides the Session class representing a persistent computational 
 environment and the SessionManager class that orchestrates session lifecycles.
+
+Sessions form the primary organizational unit in the interpreter, containing
+multiple kernels and maintaining persistence across restarts. The SessionManager
+coordinates the creation, retrieval, deletion, and overall lifecycle of sessions.
+
+Key features:
+- Persistent session environments with filesystem-based storage
+- Management of multiple kernels within a session
+- Metadata tracking for sessions and contained kernels
+- Kernel operations (create, get, list, delete)
+- Code execution through sessions to kernels
+- Automatic session discovery and loading on startup
+- Session name resolution and reference handling
+- Graceful shutdown with resource cleanup
+
+The Session class represents a single computational environment, while the
+SessionManager provides system-wide coordination of all sessions, interfacing
+with the Registry for name resolution and kernel management.
 """
 
 import os
@@ -228,6 +246,7 @@ class SessionManager:
     # Resolve reference
     resolved = self.registry.resolve_reference(reference)
     session_id = resolved.get("session_id")
+    session_path = resolved.get("session_path")
 
     if not session_id:
       logger.debug(f"No session found for reference: {reference}")
@@ -237,11 +256,12 @@ class SessionManager:
     if session_id in self.sessions_cache:
       return self.sessions_cache[session_id]
 
-    # Try to load session from disk
-    session_path = fs.get_session_path(self.base_dir, session_id)
-    if not session_path.exists():
-      logger.error(f"Session path not found: {session_path}")
-      return None
+    # Use session_path from resolver if available, or resolve it from ID
+    if not session_path or not session_path.exists():
+      session_path = fs.get_session_path(self.base_dir, session_id)
+      if not session_path.exists():
+        logger.error(f"Session path not found: {session_path}")
+        return None
 
     # Read metadata
     metadata_path = session_path / "metadata.json"

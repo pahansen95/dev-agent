@@ -5,9 +5,10 @@ Provides a clean interface to the ontology graph and kernel management.
 """
 from __future__ import annotations
 from .ontology import OntologyGraph, Node, Stage
-from .interpreter.api import *
+from .interpreter.api import InterpreterAPI
 from .core import *
-import os, atexit, time
+import os, atexit, time, pathlib, json
+from typing import Dict, List, Any, Optional, Union
 
 class API(Protocol):
 

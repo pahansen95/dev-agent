@@ -3,7 +3,15 @@ DevAgent Interpreter - The computational bridge for development agents.
 
 This package provides a filesystem-based persistent environment for executing code
 and managing computational sessions. It directly integrates with Jupyter kernels
-without the need for a Jupyter Server.
+without the need for a Jupyter Server, enabling robust code execution capabilities
+within the DevAgent ecosystem.
+
+Key features:
+- Session-based computation environments with multiple kernels
+- Direct Jupyter kernel integration without Jupyter Server dependencies
+- Persistent filesystem storage for sessions and kernels
+- Flexible naming and reference resolution system
+- Thread-safe operations with atomic file operations
 
 The primary entry point is the InterpreterAPI class, which provides methods for
 creating and managing sessions and kernels.

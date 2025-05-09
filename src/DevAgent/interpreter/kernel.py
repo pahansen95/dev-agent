@@ -2,7 +2,22 @@
 Kernel controller for the DevAgent Interpreter.
 
 This module provides the KernelController class which manages individual
-kernel processes and handles direct communication with them.
+kernel processes and handles direct communication with them, as well as the
+ExecutionResult dataclass for standardized code execution outputs.
+
+The KernelController uses the Jupyter Client API to manage kernels directly,
+without requiring a Jupyter Server. It handles kernel lifecycle management,
+code execution, output collection, and error handling.
+
+Key features:
+- Direct kernel process management (start, stop, restart, interrupt)
+- Code execution with standardized result handling
+- Output stream capturing (stdout, stderr)
+- Rich output handling (execute results, display data)
+- Error handling and reporting
+- Connection state persistence
+- Automatic reconnection to existing kernels
+- Workspace directory management for kernel processes
 """
 
 import os
