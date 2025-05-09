@@ -23,92 +23,91 @@ import sys
 from pathlib import Path
 import copy
 
-
 def _run_cli(tmp_dir: Path, *args: str, input_text: str = "") -> str:
-    """
+  """
     Invoke the ontology CLI with *args* (after ``python -m Ontology``).
 
     On non‑zero exit it raises AssertionError printing stdout/stderr.
     Returns decoded stdout otherwise.
     """
-    cmd = [sys.executable, "-m", "Ontology", *args]
-    proc = subprocess.run(
-        cmd,
-        input=input_text.encode(),
-        cwd=tmp_dir,
-        env=os.environ,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+  cmd = [sys.executable, "-m", "Ontology", *args]
+  proc = subprocess.run(
+      cmd,
+      input=input_text.encode(),
+      cwd=tmp_dir,
+      env=os.environ,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.PIPE,
+  )
+  if proc.returncode != 0:
+    raise AssertionError(
+        f"CLI failed ({proc.returncode}):\n"
+        f"STDOUT:\n{proc.stdout.decode()}\n"
+        f"STDERR:\n{proc.stderr.decode()}"
     )
-    if proc.returncode != 0:
-        raise AssertionError(
-            f"CLI failed ({proc.returncode}):\n"
-            f"STDOUT:\n{proc.stdout.decode()}\n"
-            f"STDERR:\n{proc.stderr.decode()}"
-        )
-    return proc.stdout.decode()
-
+  return proc.stdout.decode()
 
 def test_cli_roundtrip(tmp_path: Path) -> None:
-    """End‑to‑end check of all graph sub‑commands."""
-    graph_a = tmp_path / "graph_a.json"
-    graph_b = tmp_path / "graph_b.json"
-    # helper to swap
-    def swap():
-        nonlocal graph_a, graph_b
-        graph_a, graph_b = graph_b, graph_a
+  """End‑to‑end check of all graph sub‑commands."""
+  graph_a = tmp_path / "graph_a.json"
+  graph_b = tmp_path / "graph_b.json"
 
-    # 1. init
-    _run_cli(tmp_path, "graph", "init", str(graph_a))
-    assert graph_a.exists()
+  # helper to swap
+  def swap():
+    nonlocal graph_a, graph_b
+    graph_a, graph_b = graph_b, graph_a
 
-    # 2. info (empty)
-    out = _run_cli(tmp_path, "graph", "info", f"-f={graph_a.as_posix()}", "-")
-    assert "nodes=0" in out and "edges=0" in out
+  # 1. init
+  _run_cli(tmp_path, "graph", "init", str(graph_a))
+  assert graph_a.exists()
 
-    # 3. add nodes
-    _run_cli(
-        tmp_path,
-        "graph",
-        "add-node",
-        f"-f={graph_a.as_posix()}",
-        graph_b.as_posix(),
-        "root",
-        "Root",
-        "problem",
-    )
-    swap()
-    _run_cli(
-        tmp_path,
-        "graph",
-        "add-node",
-        f"-f={graph_a.as_posix()}",
-        graph_b.as_posix(),
-        "child",
-        "Child",
-        "concept",
-    )
-    swap()
+  # 2. info (empty)
+  out = _run_cli(tmp_path, "graph", "info", f"-f={graph_a.as_posix()}", "-")
+  assert "nodes=0" in out and "edges=0" in out
 
-    # 4. add edge
-    _run_cli(
-        tmp_path,
-        "graph",
-        "add-edge",
-        f"-f={graph_a.as_posix()}",
-        graph_b.as_posix(),
-        "root",
-        "decomposes_to",
-        "child",
-    )
-    swap()
+  # 3. add nodes
+  _run_cli(
+      tmp_path,
+      "graph",
+      "add-node",
+      f"-f={graph_a.as_posix()}",
+      graph_b.as_posix(),
+      "root",
+      "Root",
+      "problem",
+  )
+  swap()
+  _run_cli(
+      tmp_path,
+      "graph",
+      "add-node",
+      f"-f={graph_a.as_posix()}",
+      graph_b.as_posix(),
+      "child",
+      "Child",
+      "concept",
+  )
+  swap()
 
-    # 5. info (populated)
-    out = _run_cli(tmp_path, "graph", "info", f"-f={graph_a.as_posix()}", "-")
-    assert "nodes=2" in out and "edges=1" in out
+  # 4. add edge
+  _run_cli(
+      tmp_path,
+      "graph",
+      "add-edge",
+      f"-f={graph_a.as_posix()}",
+      graph_b.as_posix(),
+      "root",
+      "decomposes_to",
+      "child",
+  )
+  swap()
 
-    # 6. dump & validate
-    dumped = _run_cli(tmp_path, "graph", "dump", f"-f={graph_a.as_posix()}", "-")
-    data = json.loads(dumped)
-    assert {n["id"] for n in data["nodes"]} == {"root", "child"}
-    assert data["edges"] == [{"src": "root", "rel": "decomposes_to", "dst": "child"}]
+  # 5. info (populated)
+  out = _run_cli(tmp_path, "graph", "info", f"-f={graph_a.as_posix()}", "-")
+  assert "nodes=2" in out and "edges=1" in out
+
+  # 6. dump & validate
+  dumped = _run_cli(tmp_path, "graph", "dump", f"-f={graph_a.as_posix()}", "-")
+  data = json.loads(dumped)
+  assert {n["id"] for n in data["nodes"]} == { "root", "child"}
+  assert data["edges"] == [{ "src": "root", "rel": "decomposes_to", "dst": "child"}]

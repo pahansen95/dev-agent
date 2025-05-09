@@ -1,0 +1,152 @@
+from typing import Dict, Optional
+import logging
+from pathlib import Path
+
+from ..domain.model import Kernel
+from ..domain.value_objects import KernelId, SessionId, ExecutionResult
+from ...interpreter.kernel import KernelController as LegacyKernelController
+
+logger = logging.getLogger(__name__)
+
+class KernelControllerAdapter:
+    """
+    Adapter that connects the domain Kernel model to the infrastructure KernelController.
+    This allows the domain model to remain pure while delegating actual kernel
+    operations to the existing implementation.
+    """
+    
+    def __init__(self):
+        """Initialize the adapter."""
+        self._controllers: Dict[str, LegacyKernelController] = {}
+    
+    def get_controller(self, kernel: Kernel, workspace_dir: Path) -> LegacyKernelController:
+        """
+        Get or create a controller for the given kernel.
+        
+        Args:
+            kernel: The kernel entity
+            workspace_dir: The workspace directory for the kernel
+            
+        Returns:
+            The kernel controller
+        """
+        kernel_id = str(kernel.id)
+        
+        # Check if we already have a controller
+        if kernel_id in self._controllers:
+            controller = self._controllers[kernel_id]
+            if controller.is_alive():
+                return controller
+            else:
+                # Remove dead controller
+                del self._controllers[kernel_id]
+        
+        # Create new controller
+        controller = LegacyKernelController(
+            id=kernel_id,
+            name=kernel.name,
+            kernel_type=kernel.kernel_type,
+            session_id=str(kernel.session_id),
+            workspace_dir=workspace_dir
+        )
+        
+        self._controllers[kernel_id] = controller
+        return controller
+    
+    def start_kernel(self, kernel: Kernel, workspace_dir: Path) -> bool:
+        """
+        Start the kernel process.
+        
+        Args:
+            kernel: The kernel entity
+            workspace_dir: The workspace directory for the kernel
+            
+        Returns:
+            True if started successfully, False otherwise
+        """
+        controller = self.get_controller(kernel, workspace_dir)
+        success = controller.start_kernel()
+        if success:
+            kernel._is_alive = True
+        return success
+    
+    def execute_code(self, kernel: Kernel, code: str, workspace_dir: Path) -> ExecutionResult:
+        """
+        Execute code in the kernel.
+        
+        Args:
+            kernel: The kernel entity
+            code: The code to execute
+            workspace_dir: The workspace directory for the kernel
+            
+        Returns:
+            The execution result
+        """
+        controller = self.get_controller(kernel, workspace_dir)
+        
+        # Execute using legacy controller
+        legacy_result = controller.execute(code)
+        
+        # Map to domain ExecutionResult
+        result = ExecutionResult(
+            success=legacy_result.success,
+            stdout=legacy_result.stdout,
+            error=legacy_result.error,
+            outputs=legacy_result.outputs,
+            execution_time=legacy_result.execution_time
+        )
+        
+        # Update kernel state
+        kernel.update_last_activity()
+        
+        return result
+    
+    def interrupt_kernel(self, kernel: Kernel, workspace_dir: Path) -> bool:
+        """
+        Interrupt the kernel's execution.
+        
+        Args:
+            kernel: The kernel entity
+            workspace_dir: The workspace directory for the kernel
+            
+        Returns:
+            True if interrupted successfully, False otherwise
+        """
+        controller = self.get_controller(kernel, workspace_dir)
+        return controller.interrupt()
+    
+    def restart_kernel(self, kernel: Kernel, workspace_dir: Path) -> bool:
+        """
+        Restart the kernel.
+        
+        Args:
+            kernel: The kernel entity
+            workspace_dir: The workspace directory for the kernel
+            
+        Returns:
+            True if restarted successfully, False otherwise
+        """
+        controller = self.get_controller(kernel, workspace_dir)
+        success = controller.restart()
+        kernel._is_alive = success
+        return success
+    
+    def shutdown_kernel(self, kernel: Kernel, workspace_dir: Path) -> bool:
+        """
+        Shutdown the kernel.
+        
+        Args:
+            kernel: The kernel entity
+            workspace_dir: The workspace directory for the kernel
+            
+        Returns:
+            True if shut down successfully, False otherwise
+        """
+        controller = self.get_controller(kernel, workspace_dir)
+        success = controller.shutdown()
+        if success:
+            kernel._is_alive = False
+            # Remove from controllers cache
+            if str(kernel.id) in self._controllers:
+                del self._controllers[str(kernel.id)]
+        return success
