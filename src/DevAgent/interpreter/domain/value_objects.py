@@ -3,6 +3,7 @@ import uuid
 from typing import Optional, Literal, List, Union
 from pathlib import Path
 import time
+from enum import Enum
 
 @dataclass(frozen=True)
 class SessionId:
@@ -29,6 +30,14 @@ class KernelId:
     
     def __str__(self) -> str:
         return self.value
+
+class KernelStatus(Enum):
+    """Possible states for a kernel."""
+    STARTING = "starting"
+    RUNNING = "running"
+    STOPPING = "stopping"
+    STOPPED = "stopped"
+    FAILED = "failed"
 
 @dataclass(frozen=True)
 class Reference:

@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 import time
-from typing import Dict, List, Optional, Set
-from .value_objects import SessionId, KernelId, ExecutionResult
+from typing import Dict, List, Optional, Set, Any
+from .value_objects import SessionId, KernelId, ExecutionResult, KernelStatus
 from .exceptions import KernelNotFoundError, KernelAlreadyExistsError
 
 @dataclass
@@ -13,6 +13,7 @@ class Kernel:
     kernel_type: str
     created_at: float = field(default_factory=time.time)
     last_activity: float = field(default_factory=time.time)
+    desired_status: KernelStatus = KernelStatus.RUNNING
     _is_alive: bool = False
     
     def start(self) -> bool:
@@ -69,10 +70,20 @@ class Kernel:
     def is_alive(self) -> bool:
         """Check if the kernel is alive."""
         return self._is_alive
-    
+
     def update_last_activity(self) -> None:
         """Update the last activity timestamp."""
         self.last_activity = time.time()
+
+    def request_start(self) -> None:
+        """Request that this kernel be started by the operator."""
+        self.desired_status = KernelStatus.RUNNING
+        self.update_last_activity()
+
+    def request_shutdown(self) -> None:
+        """Request that this kernel be shut down by the operator."""
+        self.desired_status = KernelStatus.STOPPED
+        self.update_last_activity()
 
 @dataclass
 class Session:
@@ -123,3 +134,121 @@ class Session:
     def has_kernel_with_name(self, name: str) -> bool:
         """Check if the session has a kernel with the given name."""
         return any(kernel.name == name for kernel in self._kernels.values())
+
+@dataclass
+class KernelRuntimeState:
+    """Entity representing the runtime state of a kernel process."""
+    kernel_id: KernelId
+    session_id: SessionId
+    status: KernelStatus = KernelStatus.STOPPED
+    desired_status: KernelStatus = KernelStatus.STOPPED
+    process_id: Optional[int] = None
+    connection_file: Optional[str] = None
+    jupyter_kernel_id: Optional[str] = None
+    health_metrics: Dict[str, Any] = field(default_factory=dict)
+    last_health_check: float = field(default_factory=time.time)
+    last_reconciliation: float = field(default_factory=time.time)
+
+    def is_reconciled(self) -> bool:
+        """
+        Check if the actual state matches the desired state.
+
+        Returns:
+            True if the actual state matches the desired state
+        """
+        return self.status == self.desired_status
+
+    def needs_reconciliation(self, threshold_seconds: float = 30.0) -> bool:
+        """
+        Check if the state needs reconciliation based on time since last reconciliation.
+
+        Args:
+            threshold_seconds: Time threshold in seconds
+
+        Returns:
+            True if reconciliation is needed
+        """
+        if not self.is_reconciled():
+            return True
+
+        time_since_reconciliation = time.time() - self.last_reconciliation
+        return time_since_reconciliation > threshold_seconds
+
+    def update_status(self, new_status: KernelStatus) -> None:
+        """
+        Update the actual status of the kernel.
+
+        Args:
+            new_status: The new status
+        """
+        self.status = new_status
+
+    def update_desired_status(self, desired_status: KernelStatus) -> None:
+        """
+        Update the desired status of the kernel.
+
+        Args:
+            desired_status: The new desired status
+        """
+        self.desired_status = desired_status
+
+    def update_process_info(self, process_id: Optional[int], connection_file: Optional[str], jupyter_kernel_id: Optional[str] = None) -> None:
+        """
+        Update the process information.
+
+        Args:
+            process_id: The process ID
+            connection_file: Path to the connection file
+            jupyter_kernel_id: The Jupyter kernel ID
+        """
+        self.process_id = process_id
+        self.connection_file = connection_file
+        if jupyter_kernel_id:
+            self.jupyter_kernel_id = jupyter_kernel_id
+
+    def update_health_metrics(self, metrics: Dict[str, Any]) -> None:
+        """
+        Update the health metrics for the kernel.
+
+        Args:
+            metrics: Health metrics data
+        """
+        self.health_metrics = metrics
+        self.last_health_check = time.time()
+
+    def mark_as_reconciled(self) -> None:
+        """Mark the state as reconciled at the current time."""
+        self.last_reconciliation = time.time()
+
+    def is_process_running(self) -> bool:
+        """
+        Check if the process is believed to be running based on status.
+
+        Returns:
+            True if the process is expected to be running
+        """
+        return self.status in {KernelStatus.RUNNING, KernelStatus.STARTING}
+
+    def should_start_process(self) -> bool:
+        """
+        Check if the process should be started to reach desired state.
+
+        Returns:
+            True if the process should be started
+        """
+        return (
+            self.desired_status == KernelStatus.RUNNING and
+            self.status in {KernelStatus.STOPPED, KernelStatus.FAILED}
+        )
+
+    def should_stop_process(self) -> bool:
+        """
+        Check if the process should be stopped to reach desired state.
+
+        Returns:
+            True if the process should be stopped
+        """
+        return (
+            self.desired_status == KernelStatus.STOPPED and
+            self.status in {KernelStatus.RUNNING, KernelStatus.STARTING}
+        )

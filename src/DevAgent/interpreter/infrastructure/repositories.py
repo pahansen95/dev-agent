@@ -3,10 +3,13 @@ import time
 from typing import Dict, List, Optional, Any
 import logging
 
-from ..domain.model import Session, Kernel
-from ..domain.value_objects import SessionId, KernelId
-from ..domain.repositories import SessionRepository, KernelRepository
-from ..domain.events import SessionCreated, SessionDeleted, KernelCreated, KernelShutdown
+from ..domain.model import Session, Kernel, KernelRuntimeState
+from ..domain.value_objects import SessionId, KernelId, KernelStatus
+from ..domain.repositories import SessionRepository, KernelRepository, RuntimeStateRepository
+from ..domain.events import (
+    SessionCreated, SessionDeleted, KernelCreated, KernelShutdown,
+    KernelActualStateChanged, KernelDesiredStateChanged
+)
 from .fs_manager import FileSystemManager
 from .event_bus import EventBus
 
@@ -272,6 +275,7 @@ class FileSystemKernelRepository:
             "kernel_type": kernel.kernel_type,
             "created_at": kernel.created_at,
             "last_activity": kernel.last_activity,
+            "desired_status": kernel.desired_status.value,
             "is_alive": kernel.is_alive
         }
         
@@ -423,6 +427,7 @@ class FileSystemKernelRepository:
             kernel_type=metadata["kernel_type"],
             created_at=metadata.get("created_at", time.time()),
             last_activity=metadata.get("last_activity", time.time()),
+            desired_status=KernelStatus(metadata.get("desired_status", "running")),
             _is_alive=metadata.get("is_alive", False)
         )
         
@@ -439,3 +444,280 @@ class FileSystemKernelRepository:
         """
         registry_path = self.fs_manager.base_dir / "registry" / "sessions.json"
         return self.fs_manager.atomic_read_json(registry_path, {})
+
+
+class FileSystemRuntimeStateRepository(RuntimeStateRepository):
+    """Implementation of RuntimeStateRepository using filesystem storage."""
+    
+    def __init__(self, fs_manager: FileSystemManager, event_bus: EventBus):
+        """
+        Initialize the repository.
+        
+        Args:
+            fs_manager: The file system manager
+            event_bus: The event bus for publishing events
+        """
+        self.fs_manager = fs_manager
+        self.event_bus = event_bus
+        self.runtime_states_dir = fs_manager.base_dir / "runtime" / "kernels"
+        self.runtime_states_dir.mkdir(parents=True, exist_ok=True)
+        self._pid_cache: Dict[int, str] = {}  # Maps PIDs to kernel IDs
+        self._cache: Dict[str, KernelRuntimeState] = {}
+    
+    def save(self, runtime_state: KernelRuntimeState) -> None:
+        """
+        Save runtime state to the repository.
+        
+        Args:
+            runtime_state: The runtime state to save
+        """
+        # Get previous state if it exists
+        previous_state = None
+        if str(runtime_state.kernel_id) in self._cache:
+            previous_state = self._cache[str(runtime_state.kernel_id)]
+        
+        # Detect state changes
+        state_changed = previous_state is None or previous_state.status != runtime_state.status
+        desired_state_changed = previous_state is None or previous_state.desired_status != runtime_state.desired_status
+        
+        # Serialize state
+        kernel_id_str = str(runtime_state.kernel_id)
+        state_data = {
+            "kernel_id": kernel_id_str,
+            "session_id": str(runtime_state.session_id),
+            "status": runtime_state.status.value,
+            "desired_status": runtime_state.desired_status.value,
+            "process_id": runtime_state.process_id,
+            "connection_file": runtime_state.connection_file,
+            "jupyter_kernel_id": runtime_state.jupyter_kernel_id,
+            "health_metrics": runtime_state.health_metrics,
+            "last_health_check": runtime_state.last_health_check,
+            "last_reconciliation": runtime_state.last_reconciliation
+        }
+        
+        # Write state file
+        state_path = self.runtime_states_dir / f"{kernel_id_str}.json"
+        self.fs_manager.atomic_write_json(state_path, state_data)
+        
+        # Update cache
+        self._cache[kernel_id_str] = runtime_state
+        
+        # Update PID cache if process ID is set
+        if runtime_state.process_id is not None:
+            self._pid_cache[runtime_state.process_id] = kernel_id_str
+        
+        # Publish events if state changed
+        if state_changed:
+            previous_status = previous_state.status if previous_state else KernelStatus.STOPPED
+            self.event_bus.publish(KernelActualStateChanged(
+                kernel_id=runtime_state.kernel_id,
+                session_id=runtime_state.session_id,
+                previous_state=previous_status,
+                actual_state=runtime_state.status,
+                process_id=runtime_state.process_id,
+                connection_file=runtime_state.connection_file,
+                health_metrics=runtime_state.health_metrics,
+                timestamp=time.time()
+            ))
+        
+        if desired_state_changed:
+            previous_desired_status = previous_state.desired_status if previous_state else KernelStatus.STOPPED
+            self.event_bus.publish(KernelDesiredStateChanged(
+                kernel_id=runtime_state.kernel_id,
+                session_id=runtime_state.session_id,
+                previous_state=previous_desired_status,
+                desired_state=runtime_state.desired_status,
+                timestamp=time.time()
+            ))
+    
+    def find_by_kernel_id(self, kernel_id: KernelId) -> Optional[KernelRuntimeState]:
+        """
+        Find runtime state by kernel ID.
+        
+        Args:
+            kernel_id: The kernel ID
+            
+        Returns:
+            The runtime state if found, None otherwise
+        """
+        # Check cache first
+        if str(kernel_id) in self._cache:
+            return self._cache[str(kernel_id)]
+        
+        # Check filesystem
+        state_path = self.runtime_states_dir / f"{str(kernel_id)}.json"
+        if not state_path.exists():
+            return None
+        
+        # Load state
+        state_data = self.fs_manager.atomic_read_json(state_path, {})
+        if not state_data:
+            return None
+        
+        # Create runtime state object
+        runtime_state = self._deserialize_runtime_state(state_data)
+        
+        # Add to cache
+        if runtime_state:
+            self._cache[str(kernel_id)] = runtime_state
+            if runtime_state.process_id is not None:
+                self._pid_cache[runtime_state.process_id] = str(kernel_id)
+        
+        return runtime_state
+    
+    def find_by_process_id(self, process_id: int) -> Optional[KernelRuntimeState]:
+        """
+        Find runtime state by process ID.
+        
+        Args:
+            process_id: The process ID
+            
+        Returns:
+            The runtime state if found, None otherwise
+        """
+        # Check PID cache first
+        if process_id in self._pid_cache:
+            kernel_id_str = self._pid_cache[process_id]
+            if kernel_id_str in self._cache:
+                return self._cache[kernel_id_str]
+        
+        # Search all runtime states
+        for state_path in self.runtime_states_dir.glob("*.json"):
+            state_data = self.fs_manager.atomic_read_json(state_path, {})
+            if state_data.get("process_id") == process_id:
+                runtime_state = self._deserialize_runtime_state(state_data)
+                if runtime_state:
+                    kernel_id_str = str(runtime_state.kernel_id)
+                    self._cache[kernel_id_str] = runtime_state
+                    self._pid_cache[process_id] = kernel_id_str
+                    return runtime_state
+        
+        return None
+    
+    def find_by_session_id(self, session_id: SessionId) -> List[KernelRuntimeState]:
+        """
+        Find runtime states for all kernels in a session.
+        
+        Args:
+            session_id: The session ID
+            
+        Returns:
+            List of runtime states
+        """
+        session_id_str = str(session_id)
+        runtime_states = []
+        
+        # Search all runtime states
+        for state_path in self.runtime_states_dir.glob("*.json"):
+            state_data = self.fs_manager.atomic_read_json(state_path, {})
+            if state_data.get("session_id") == session_id_str:
+                runtime_state = self._deserialize_runtime_state(state_data)
+                if runtime_state:
+                    kernel_id_str = str(runtime_state.kernel_id)
+                    self._cache[kernel_id_str] = runtime_state
+                    if runtime_state.process_id is not None:
+                        self._pid_cache[runtime_state.process_id] = kernel_id_str
+                    runtime_states.append(runtime_state)
+        
+        return runtime_states
+    
+    def delete(self, kernel_id: KernelId) -> bool:
+        """
+        Delete runtime state from the repository.
+        
+        Args:
+            kernel_id: The kernel ID
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        kernel_id_str = str(kernel_id)
+        
+        # Remove from PID cache if present
+        if kernel_id_str in self._cache and self._cache[kernel_id_str].process_id is not None:
+            process_id = self._cache[kernel_id_str].process_id
+            if process_id in self._pid_cache:
+                del self._pid_cache[process_id]
+        
+        # Remove from cache
+        if kernel_id_str in self._cache:
+            del self._cache[kernel_id_str]
+        
+        # Remove state file
+        state_path = self.runtime_states_dir / f"{kernel_id_str}.json"
+        if state_path.exists():
+            try:
+                state_path.unlink()
+                return True
+            except Exception as e:
+                logger.error(f"Error deleting runtime state file {state_path}: {e}")
+                return False
+        
+        return True  # No file to delete, still successful
+    
+    def list_all(self) -> List[KernelRuntimeState]:
+        """
+        List all runtime states in the repository.
+        
+        Returns:
+            List of all runtime states
+        """
+        runtime_states = []
+        
+        # Search all runtime states
+        for state_path in self.runtime_states_dir.glob("*.json"):
+            state_data = self.fs_manager.atomic_read_json(state_path, {})
+            runtime_state = self._deserialize_runtime_state(state_data)
+            if runtime_state:
+                kernel_id_str = str(runtime_state.kernel_id)
+                self._cache[kernel_id_str] = runtime_state
+                if runtime_state.process_id is not None:
+                    self._pid_cache[runtime_state.process_id] = kernel_id_str
+                runtime_states.append(runtime_state)
+        
+        return runtime_states
+    
+    def list_active(self) -> List[KernelRuntimeState]:
+        """
+        List all active runtime states (running or starting kernels).
+        
+        Returns:
+            List of active runtime states
+        """
+        # Get all runtime states first
+        all_states = self.list_all()
+        
+        # Filter active states
+        active_states = [
+            state for state in all_states
+            if state.status in {KernelStatus.RUNNING, KernelStatus.STARTING}
+        ]
+        
+        return active_states
+    
+    def _deserialize_runtime_state(self, data: Dict[str, Any]) -> Optional[KernelRuntimeState]:
+        """
+        Deserialize runtime state from data.
+        
+        Args:
+            data: The serialized data
+            
+        Returns:
+            The deserialized runtime state, or None if invalid
+        """
+        try:
+            return KernelRuntimeState(
+                kernel_id=KernelId(data["kernel_id"]),
+                session_id=SessionId(data["session_id"]),
+                status=KernelStatus(data["status"]),
+                desired_status=KernelStatus(data["desired_status"]),
+                process_id=data.get("process_id"),
+                connection_file=data.get("connection_file"),
+                jupyter_kernel_id=data.get("jupyter_kernel_id"),
+                health_metrics=data.get("health_metrics", {}),
+                last_health_check=data.get("last_health_check", time.time()),
+                last_reconciliation=data.get("last_reconciliation", time.time())
+            )
+        except Exception as e:
+            logger.error(f"Error deserializing runtime state: {e}")
+            return None
