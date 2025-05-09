@@ -1,453 +1,312 @@
 """
-DevAgent Interpreter Session Management
+Session management for the DevAgent Interpreter.
 
-This module provides the core session functionality for the DevAgent Interpreter,
-implementing a computational bridge between agent and project.
-
-Key components:
-- KernelController: Manages a Jupyter kernel process and communication
-- Session: Represents a persistent computational environment
-- SessionManager: Coordinates multiple sessions
-
-These components work together to provide a robust execution environment
-for development agents to interact with projects.
+This module provides the Session class representing a persistent computational 
+environment and the SessionManager class that orchestrates session lifecycles.
 """
 
-from __future__ import annotations
-from typing import Dict, List, Optional, Tuple, Any, Union
-from pathlib import Path
 import os
-import json
 import time
 import logging
-from jupyter_client import KernelManager
+from pathlib import Path
+from typing import Dict, List, Any, Optional, Set
 
-# Set up logging
+from . import fs
+from .kernel import KernelController, ExecutionResult
+
 logger = logging.getLogger(__name__)
-
-class KernelController:
-
-  """
-    Manages a single Jupyter kernel process and handles communication with it.
-    
-    This class encapsulates the lifecycle of a kernel (start, execute, shutdown)
-    and provides a simplified interface for code execution.
-    """
-
-  def __init__(self, kernel_name: str = "python3"):
-    """
-        Initialize a kernel controller.
-        
-        Parameters
-        ----------
-        kernel_name : str
-            Name of the Jupyter kernel to use (default: "python3")
-        """
-    self.kernel_name = kernel_name
-    self.km = None
-    self.kc = None
-    logger.debug(f"Initialized KernelController with kernel_name={kernel_name}")
-
-  def start_kernel(self, env: Optional[Dict[str, str]] = None, cwd: Optional[str] = None) -> bool:
-    """
-        Start the kernel process.
-        
-        Parameters
-        ----------
-        env : Dict[str, str], optional
-            Environment variables for the kernel
-        cwd : str, optional
-            Working directory for the kernel
-            
-        Returns
-        -------
-        bool
-            True if kernel started successfully
-        """
-    logger.info(f"Starting kernel: {self.kernel_name}")
-    try:
-      self.km = KernelManager(kernel_name=self.kernel_name)
-      self.km.start_kernel(env=env, cwd=cwd)
-      self.kc = self.km.client()
-      self.kc.start_channels()
-
-      # Wait for kernel to be ready
-      logger.debug("Waiting for kernel to be ready...")
-      self.kc.wait_for_ready(timeout=60)
-      logger.info(f"Kernel started successfully with id: {self.km.kernel_id}")
-      return True
-    except Exception as e:
-      logger.error(f"Error starting kernel: {str(e)}")
-      # Clean up if partial initialization
-      self.shutdown()
-      raise
-
-  def is_alive(self) -> bool:
-    """
-        Check if the kernel is running.
-        
-        Returns
-        -------
-        bool
-            True if kernel is alive
-        """
-    return self.km is not None and self.km.is_alive()
-
-  def execute(self, code: str) -> Tuple[str, Optional[str]]:
-    """
-        Execute code in the kernel and return stdout and error.
-        
-        Parameters
-        ----------
-        code : str
-            Code to execute
-            
-        Returns
-        -------
-        Tuple[str, Optional[str]]
-            (stdout, error) where error is None if execution succeeded
-        """
-    if not self.is_alive():
-      logger.warning("Kernel not alive, starting new kernel")
-      self.start_kernel()
-
-    logger.debug(f"Executing code: {code[:50]}...")
-
-    # Send execution request
-    msg_id = self.kc.execute(code)
-
-    # Collect outputs
-    stdout = []
-    error = None
-
-    # Process messages until idle
-    while True:
-      try:
-        msg = self.kc.get_iopub_msg(timeout=1)
-        msg_type = msg['msg_type']
-
-        if msg_type == 'stream' and msg['content']['name'] == 'stdout':
-          stdout.append(msg['content']['text'])
-          logger.debug(f"Stdout: {msg['content']['text'][:50]}...")
-        elif msg_type == 'stream' and msg['content']['name'] == 'stderr':
-          stdout.append(msg['content']['text'])
-          logger.debug(f"Stderr: {msg['content']['text'][:50]}...")
-        elif msg_type == 'error':
-          error = "\n".join(msg['content']['traceback'])
-          logger.warning(f"Execution error: {msg['content']['ename']}")
-        elif msg_type == 'status' and msg['content']['execution_state'] == 'idle':
-          logger.debug("Execution completed")
-          break
-      except Exception as e:
-        logger.debug(f"Error or timeout getting message: {str(e)}")
-        break
-
-    return ("".join(stdout), error)
-
-  def interrupt(self) -> bool:
-    """
-        Interrupt the kernel's execution.
-        
-        Returns
-        -------
-        bool
-            True if interrupt succeeded
-        """
-    if self.km:
-      logger.info("Interrupting kernel")
-      self.km.interrupt_kernel()
-      return True
-    return False
-
-  def restart(self) -> bool:
-    """
-        Restart the kernel.
-        
-        Returns
-        -------
-        bool
-            True if restart succeeded
-        """
-    if self.km:
-      logger.info("Restarting kernel")
-      self.km.restart_kernel()
-      return True
-    return False
-
-  def shutdown(self) -> None:
-    """Clean shutdown of the kernel."""
-    logger.info("Shutting down kernel")
-    if self.kc:
-      logger.debug("Stopping client channels")
-      self.kc.stop_channels()
-      self.kc = None
-
-    if self.km:
-      logger.debug("Shutting down kernel manager")
-      self.km.shutdown_kernel(now=True)
-      self.km = None
 
 class Session:
 
-  """
-    A persistent computational environment for DevAgent.
-    
-    Sessions maintain state between executions and provide a consistent
-    context for development operations.
-    """
+  """A persistent computational environment with multiple kernels."""
 
-  def __init__(self, session_id: str, base_dir: Optional[Union[str, Path]] = None):
-    """
-        Initialize a session.
-        
-        Parameters
-        ----------
-        session_id : str
-            Unique identifier for the session
-        base_dir : str or Path, optional
-            Base directory for session storage
-        """
-    self.id = session_id
-    self.base_dir = Path(base_dir or os.getcwd())
-    self.kernel = None
+  def __init__(self, id: str, name: str, path: Path, registry):
+    """Initialize a session."""
+    self.id = id
+    self.name = name
+    self.path = path
+    self.registry = registry
+    self.kernels_path = path / "kernels"
+    logger.debug(f"Initialized session: {id} ({name})")
 
-    # Create session directory structure
-    self.session_dir = self.base_dir / ".devagent" / "sessions" / session_id
-    self.session_dir.mkdir(parents=True, exist_ok=True)
-    self.state_file = self.session_dir / "state.json"
+  def create_kernel(self, name: str, kernel_type: str = "python3") -> KernelController:
+    """Create a new kernel in this session."""
+    # Check if kernel with this name already exists
+    existing_kernels = self.list_kernels()
+    for kernel in existing_kernels:
+      if kernel["name"] == name:
+        logger.warning(f"Kernel with name {name} already exists in session {self.id}")
+        kernel_id = kernel["id"]
+        controller = self.registry.get_kernel_controller(kernel_id, self.path)
+        if controller:
+          return controller
+        # If controller not found but kernel exists in metadata, remove it
+        self._remove_kernel_from_metadata(kernel_id)
 
-    logger.info(f"Initialized session: {session_id} in {self.session_dir}")
+    # Generate kernel ID
+    kernel_id = self.registry.generate_kernel_id()
 
-  def initialize(self, kernel_name: str = "python3") -> Session:
-    """
-        Initialize the session with a kernel.
-        
-        Parameters
-        ----------
-        kernel_name : str
-            Name of the kernel to use
-            
-        Returns
-        -------
-        Session
-            Self for method chaining
-        """
-    logger.info(f"Initializing session: {self.id}")
-    self.kernel = KernelController(kernel_name=kernel_name)
+    # Create the kernel
+    controller = self.registry.create_kernel_controller(kernel_id=kernel_id, name=name, kernel_type=kernel_type, session_id=self.id, session_path=self.path)
 
-    # Set working directory to session dir by default
-    cwd = str(self.session_dir)
+    # Update session metadata
+    self._add_kernel_to_metadata(kernel_id, name)
 
-    # Initialize with environment variables
-    env = os.environ.copy()
-    env['DEVAGENT_SESSION_ID'] = self.id
-    env['DEVAGENT_SESSION_DIR'] = cwd
+    # Register in registry and create symlinks
+    self.registry.register_kernel(f"{self.name}/{name}", kernel_id)
+    fs.create_symlink(self.registry.base_dir / "by-name" / self.name / name, self.path / "kernels" / kernel_id)
 
-    # Start the kernel
-    self.kernel.start_kernel(env=env, cwd=cwd)
+    return controller
 
-    # Initialize state tracking
-    self._save_state()
-    return self
+  def get_kernel(self, reference: str) -> Optional[KernelController]:
+    """Get a kernel by name or ID."""
+    # If reference is a kernel name, not an ID
+    if not reference.startswith("kid-"):
+      # Check if it's a direct name
+      kernel_id = None
+      for kernel in self.list_kernels():
+        if kernel["name"] == reference:
+          kernel_id = kernel["id"]
+          break
 
-  def execute(self, code: str) -> Tuple[str, Optional[str]]:
-    """
-        Execute code in this session.
-        
-        Parameters
-        ----------
-        code : str
-            Code to execute
-            
-        Returns
-        -------
-        Tuple[str, Optional[str]]
-            (stdout, error) where error is None if execution succeeded
-        """
-    if not self.kernel:
-      logger.info(f"Session {self.id} has no kernel, initializing")
-      self.initialize()
+      # If not found as direct name, try the full reference
+      if not kernel_id:
+        full_name = f"{self.name}/{reference}"
+        kernel_id = self.registry.lookup_kernel(full_name)
+    else:
+      # Reference is already a kernel ID
+      kernel_id = reference
 
-    logger.debug(f"Session {self.id} executing code")
-    result = self.kernel.execute(code)
+    if not kernel_id:
+      logger.debug(f"No kernel found for reference: {reference} in session {self.id}")
+      return None
 
-    # Update last activity time
-    self._save_state()
+    # Get controller
+    controller = self.registry.get_kernel_controller(kernel_id, self.path)
+    return controller
+
+  def list_kernels(self) -> List[Dict[str, Any]]:
+    """List all kernels in this session."""
+    metadata = self._get_metadata()
+    return metadata.get("kernels", [])
+
+  def delete_kernel(self, reference: str) -> bool:
+    """Delete a kernel from this session."""
+    # Get kernel ID
+    kernel = self.get_kernel(reference)
+    if not kernel:
+      logger.warning(f"Kernel not found for deletion: {reference}")
+      return False
+
+    kernel_id = kernel.id
+    kernel_name = kernel.name
+
+    # Delete from registry
+    return self.registry.delete_kernel(kernel_id=kernel_id, session_id=self.id, session_path=self.path, kernel_name=kernel_name)
+
+  def execute(self, kernel_reference: str, code: str) -> ExecutionResult:
+    """Execute code in a kernel."""
+    # Get the kernel
+    kernel = self.get_kernel(kernel_reference)
+    if not kernel:
+      raise ValueError(f"Kernel not found: {kernel_reference}")
+
+    # Execute the code
+    result = kernel.execute(code)
+
+    # Update session metadata with last activity
+    self._update_last_activity()
 
     return result
 
-  def interrupt(self) -> bool:
-    """
-        Interrupt the current execution.
-        
-        Returns
-        -------
-        bool
-            True if interrupt succeeded
-        """
-    if self.kernel:
-      return self.kernel.interrupt()
-    return False
+  def _get_metadata(self) -> Dict[str, Any]:
+    """Get session metadata."""
+    metadata_path = self.path / "metadata.json"
+    return fs.atomic_read_json(metadata_path, {})
 
-  def restart(self) -> bool:
-    """
-        Restart the session's kernel.
-        
-        Returns
-        -------
-        bool
-            True if restart succeeded
-        """
-    if self.kernel:
-      return self.kernel.restart()
-    return False
+  def _update_metadata(self, updates: Dict[str, Any]) -> None:
+    """Update session metadata."""
+    metadata_path = self.path / "metadata.json"
+    with fs.FileLock(metadata_path):
+      metadata = self._get_metadata()
+      metadata.update(updates)
+      fs.atomic_write_json(metadata_path, metadata)
 
-  def _save_state(self) -> None:
-    """Save session state to disk."""
-    logger.debug(f"Saving state for session: {self.id}")
-    state = {"id": self.id, "last_activity": time.time(), "kernel_name": self.kernel.kernel_name if self.kernel else None}
+  def _update_last_activity(self) -> None:
+    """Update the last activity timestamp."""
+    self._update_metadata({"last_activity": time.time()})
 
-    with open(self.state_file, "w") as f:
-      json.dump(state, f)
+  def _add_kernel_to_metadata(self, kernel_id: str, kernel_name: str) -> None:
+    """Add a kernel to session metadata."""
+    metadata_path = self.path / "metadata.json"
+    with fs.FileLock(metadata_path):
+      metadata = self._get_metadata()
 
-  def _load_state(self) -> Dict[str, Any]:
-    """
-        Load session state from disk.
-        
-        Returns
-        -------
-        Dict[str, Any]
-            Session state dictionary
-        """
-    if self.state_file.exists():
-      logger.debug(f"Loading state for session: {self.id}")
-      with open(self.state_file, "r") as f:
-        return json.load(f)
-    return {"id": self.id}
+      # Check if kernels list exists
+      if "kernels" not in metadata:
+        metadata["kernels"] = []
+
+      # Check if kernel already exists
+      for kernel in metadata["kernels"]:
+        if kernel.get("id") == kernel_id:
+          # Already exists, update name
+          kernel["name"] = kernel_name
+          break
+      else:
+        # Doesn't exist, add it
+        metadata["kernels"].append({"id": kernel_id, "name": kernel_name})
+
+      # Update last activity
+      metadata["last_activity"] = time.time()
+
+      fs.atomic_write_json(metadata_path, metadata)
+
+  def _remove_kernel_from_metadata(self, kernel_id: str) -> None:
+    """Remove a kernel from session metadata."""
+    metadata_path = self.path / "metadata.json"
+    with fs.FileLock(metadata_path):
+      metadata = self._get_metadata()
+
+      # Remove kernel from list
+      if "kernels" in metadata:
+        metadata["kernels"] = [k for k in metadata["kernels"] if k.get("id") != kernel_id]
+
+      # Update last activity
+      metadata["last_activity"] = time.time()
+
+      fs.atomic_write_json(metadata_path, metadata)
 
   def shutdown(self) -> None:
-    """Clean up the session."""
-    logger.info(f"Shutting down session: {self.id}")
-    if self.kernel:
-      self.kernel.shutdown()
-      self.kernel = None
-    self._save_state()
+    """Shutdown all kernels in this session."""
+    for kernel in self.list_kernels():
+      kernel_id = kernel.get("id")
+      if kernel_id:
+        self.registry.shutdown_kernel(kernel_id)
 
 class SessionManager:
 
-  """
-    Manages multiple interpreter sessions.
-    
-    Provides functionality to create, retrieve, and manage sessions,
-    acting as the main entry point for session operations.
-    """
+  """Manages the lifecycle of interpreter sessions."""
 
-  def __init__(self, base_dir: Optional[Union[str, Path]] = None):
-    """
-        Initialize the session manager.
-        
-        Parameters
-        ----------
-        base_dir : str or Path, optional
-            Base directory for session storage
-        """
-    self.base_dir = Path(base_dir or os.getcwd())
-    self.sessions: Dict[str, Session] = {}
-    logger.info(f"Initialized SessionManager with base_dir={self.base_dir}")
+  def __init__(self, base_dir: Path, registry):
+    """Initialize with base directory and registry."""
+    self.base_dir = base_dir
+    self.registry = registry
+    self.sessions_cache = {} # Cache of active sessions
+    self._scan_and_cache_sessions()
+    logger.debug(f"Initialized SessionManager with base_dir={base_dir}")
 
-  def create_session(self, session_id: str, kernel_name: str = "python3") -> Session:
-    """
-        Create a new session or return existing one.
-        
-        Parameters
-        ----------
-        session_id : str
-            Unique identifier for the session
-        kernel_name : str
-            Name of the kernel to use
-            
-        Returns
-        -------
-        Session
-            The created or existing session
-        """
-    logger.info(f"Creating session: {session_id}")
-    if session_id in self.sessions:
-      logger.debug(f"Session {session_id} already exists")
-      return self.sessions[session_id]
+  def create_session(self, name: str) -> Session:
+    """Create a new session or get existing one."""
+    # Check if session already exists by name
+    existing_id = self.registry.lookup_session(name)
+    if existing_id:
+      logger.debug(f"Session already exists: {name} -> {existing_id}")
+      return self.get_session(existing_id)
 
-    session = Session(session_id, self.base_dir).initialize(kernel_name)
-    self.sessions[session_id] = session
+    # Generate new ID and create session
+    session_id = self.registry.generate_session_id()
+    session_path = fs.create_session_directory(self.base_dir, session_id)
+
+    # Create session metadata
+    metadata = {"id": session_id, "name": name, "created_at": time.time(), "last_activity": time.time(), "kernels": []}
+
+    fs.atomic_write_json(session_path / "metadata.json", metadata)
+
+    # Register and create symlinks
+    self.registry.register_session(name, session_id)
+    fs.create_symlink_dir(self.base_dir / "by-name" / name, session_path)
+
+    # Create and cache session object
+    session = Session(session_id, name, session_path, self.registry)
+    self.sessions_cache[session_id] = session
+
+    logger.info(f"Created new session: {name} (ID: {session_id})")
     return session
 
-  def get_session(self, session_id: str) -> Optional[Session]:
-    """
-        Get an existing session.
-        
-        Parameters
-        ----------
-        session_id : str
-            Unique identifier for the session
-            
-        Returns
-        -------
-        Optional[Session]
-            The session if it exists, None otherwise
-        """
-    if session_id in self.sessions:
-      logger.debug(f"Retrieved existing session: {session_id}")
-      return self.sessions[session_id]
+  def get_session(self, reference: str) -> Optional[Session]:
+    """Get a session by name or ID."""
+    # Resolve reference
+    resolved = self.registry.resolve_reference(reference)
+    session_id = resolved.get("session_id")
 
-    # Check if state exists on disk
-    state_file = self.base_dir / ".devagent" / "sessions" / session_id / "state.json"
-    if state_file.exists():
-      logger.info(f"Found session state on disk for {session_id}, reinitializing")
-      # Reconnect to existing session
-      session = Session(session_id, self.base_dir)
-      state = session._load_state()
-      kernel_name = state.get("kernel_name", "python3")
-      session.initialize(kernel_name)
-      self.sessions[session_id] = session
-      return session
+    if not session_id:
+      logger.debug(f"No session found for reference: {reference}")
+      return None
 
-    logger.debug(f"Session not found: {session_id}")
-    return None
+    # Check if session is in cache
+    if session_id in self.sessions_cache:
+      return self.sessions_cache[session_id]
 
-  def list_sessions(self) -> List[str]:
-    """
-        List all active session IDs.
-        
-        Returns
-        -------
-        List[str]
-            List of session IDs
-        """
-    return list(self.sessions.keys())
+    # Try to load session from disk
+    session_path = fs.get_session_path(self.base_dir, session_id)
+    if not session_path.exists():
+      logger.error(f"Session path not found: {session_path}")
+      return None
 
-  def shutdown_session(self, session_id: str) -> bool:
-    """
-        Shut down a specific session.
-        
-        Parameters
-        ----------
-        session_id : str
-            Unique identifier for the session
-            
-        Returns
-        -------
-        bool
-            True if session was shut down
-        """
-    if session_id in self.sessions:
-      logger.info(f"Shutting down session: {session_id}")
-      self.sessions[session_id].shutdown()
-      del self.sessions[session_id]
-      return True
-    return False
+    # Read metadata
+    metadata_path = session_path / "metadata.json"
+    if not metadata_path.exists():
+      logger.error(f"Session metadata not found: {metadata_path}")
+      return None
+
+    metadata = fs.atomic_read_json(metadata_path)
+    session_name = metadata.get("name", session_id)
+
+    # Create and cache session
+    session = Session(session_id, session_name, session_path, self.registry)
+    self.sessions_cache[session_id] = session
+
+    return session
+
+  def list_sessions(self) -> List[Dict[str, Any]]:
+    """List all available sessions."""
+    return self.registry.list_sessions()
+
+  def delete_session(self, reference: str) -> bool:
+    """Delete a session."""
+    # Get session
+    session = self.get_session(reference)
+    if not session:
+      logger.warning(f"Session not found for deletion: {reference}")
+      return False
+
+    session_id = session.id
+
+    # Shutdown all kernels
+    session.shutdown()
+
+    # Remove from cache
+    if session_id in self.sessions_cache:
+      del self.sessions_cache[session_id]
+
+    # Delete from registry
+    return self.registry.delete_session(session_id)
 
   def shutdown(self) -> None:
-    """Shut down all sessions."""
+    """Shutdown all sessions."""
     logger.info("Shutting down all sessions")
-    for session_id in list(self.sessions.keys()):
-      self.shutdown_session(session_id)
-    self.sessions.clear()
+    for session in list(self.sessions_cache.values()):
+      session.shutdown()
+    self.sessions_cache.clear()
+
+  def _scan_and_cache_sessions(self) -> None:
+    """Scan for existing sessions and cache them."""
+    sessions_count = 0
+    sessions_dir = self.base_dir / "by-id" / "sessions"
+    if sessions_dir.exists():
+      for session_path in sessions_dir.glob("*"):
+        metadata_path = session_path / "metadata.json"
+        if metadata_path.exists():
+          try:
+            metadata = fs.atomic_read_json(metadata_path)
+            session_id = metadata.get("id")
+            session_name = metadata.get("name", session_id)
+
+            if session_id and session_id not in self.sessions_cache:
+              session = Session(session_id, session_name, session_path, self.registry)
+              self.sessions_cache[session_id] = session
+              sessions_count += 1
+          except Exception as e:
+            logger.error(f"Error loading session from {metadata_path}: {e}")
+
+    logger.info(f"Loaded {sessions_count} sessions from disk")
