@@ -8,7 +8,7 @@ Run with::
 
 import pytest
 
-from src.Ontology.graph import OntologyGraph, Node, Edge
+from DevAgent.ontology.graph import OntologyGraph, Node, Edge
 
 # --------------------------------------------------------------------------- #
 # Helpers                                                                     #

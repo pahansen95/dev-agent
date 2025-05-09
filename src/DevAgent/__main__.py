@@ -1,565 +1,596 @@
 """
 The Package Entrypoint
-
 """
 
 from __future__ import annotations
-from typing import *
-from collections.abc import *
-from types import *
-from typing import Callable, Union, Any
-
-import logging, os, sys, contextlib, pathlib, json, time
+import argparse
+import logging
+import os
+import sys
+import pathlib
+import json
+import contextlib
+from typing import Union, Any, TextIO, Optional
 from collections import deque
-from DevAgent.api import *
+
+from DevAgent.api import InterpreterAPI, OntologyAPI
+from DevAgent.interpreter.compat import DualModeInterpreter
 
 SCRIPT = pathlib.Path(__file__)
-CONTEXT = SCRIPT.parent # The context of Script
+CONTEXT = SCRIPT.parent  # The context of Script
 logger = logging.getLogger(__package__ if __name__ == "__main__" else __name__)
 
-def handle_ontology(
-  pop_arg: Callable[[str], str],
-  get_kwarg: Callable[[str, Union[str, bool, Any]], str],
-  env: dict[str, str],
-  stdin: TextIO,
-  stdout: TextIO,
-  kwargs: dict[str, str],
-  remainder: deque[str],
-  E: type[Exception],
-):
-  op = pop_arg("operation") # e.g. "init", "info", "dump", "add-node", "add-edge"
-  # support both "init" and "create" as synonyms if you like
-  in_f = get_kwarg("f", "-") # input JSON file (or '-' for stdin)
-  out_f = get_kwarg("o", "-") # output file
 
-  graph = (None if op in ("init", "create") else OntologyAPI.load(json.load(open(in_f) if in_f != "-" else stdin)))
+def handle_ontology_init(args: argparse.Namespace) -> bool:
+    """Initialize a new ontology graph."""
+    graph = OntologyAPI.init()
+    
+    # Output graph to stdout or file
+    if args.output == "-":
+        json.dump(OntologyAPI.dump(graph), sys.stdout, indent=2)
+        sys.stdout.write("\n")
+    else:
+        with open(args.output, "w") as f:
+            json.dump(OntologyAPI.dump(graph), f, indent=2)
+    
+    return True
 
-  match op:
-    case "init" | "create":
-      graph = OntologyAPI.init()
-    case "info":
-      n, e = OntologyAPI.info(graph)
-      stdout.write(f"nodes={n} edges={e}\n")
-      return
-    case "dump":
-      json.dump(
-        OntologyAPI.dump(graph),
-        open(out_f, "w") if out_f != "-" else stdout,
-        indent=2,
-      )
-      return
-    case "add-node":
-      id_, lbl = pop_arg("ID"), pop_arg("LABEL")
-      kind = kwargs.get("kind", "concept")
-      meta = json.loads(kwargs.get("meta", "{}"))
-      OntologyAPI.add_node(graph, id_, lbl, kind, meta)
-    case "add-edge":
-      src, rel, dst = (pop_arg(k) for k in ("SRC", "REL", "DST"))
-      OntologyAPI.add_edge(graph, src, rel, dst)
-    case _:
-      raise E(f"Unknown ontology operation: {op}")
 
-  # for mutating ops we write back the updated graph
-  json.dump(OntologyAPI.dump(graph), open(out_f, "w") if out_f != "-" else stdout, indent=2)
-  stdout.write("\n")
+def handle_ontology_info(args: argparse.Namespace) -> bool:
+    """Display information about an ontology graph."""
+    # Load graph from stdin or file
+    if args.input == "-":
+        graph = OntologyAPI.load(json.load(sys.stdin))
+    else:
+        with open(args.input) as f:
+            graph = OntologyAPI.load(json.load(f))
+    
+    # Display graph info
+    nodes, edges = OntologyAPI.info(graph)
+    sys.stdout.write(f"nodes={nodes} edges={edges}\n")
+    
+    return True
 
-def handle_interpreter_session(
-  pop_arg: Callable[[str], str],
-  get_kwarg: Callable[[str, Union[str, bool, Any]], str],
-  env: dict[str, str],
-  stdin: TextIO,
-  stdout: TextIO,
-  kwargs: dict[str, str],
-  remainder: Deque[str],
-  E: type[Exception],
-):
-  """
-  Handle the 'interpreter session' subcommand.
-  
-  Supports the following actions:
-  - create: Create a new session
-  - list: List all active sessions
-  - execute: Execute code in a session
-  - delete: Delete a session
-  
-  Examples:
-    python -m DevAgent interpreter session create
-    python -m DevAgent interpreter session create --name=dev_session
-    python -m DevAgent interpreter session list
-    python -m DevAgent interpreter session execute --code="print('hello')" --session=dev_session
-  """
-  # Get the session action
-  try:
-    action = pop_arg("action")
-  except Exception:
-    # Show usage if no action provided
-    stdout.write("Usage: python -m DevAgent interpreter session <action> [options]\n")
-    stdout.write("Actions: create, list, execute, delete\n")
-    return
 
-  # Get base directory from kwargs or use current directory
-  try:
-    base_dir = get_kwarg("dir")
-    base_dir_path = pathlib.Path(base_dir)
-  except:
-    base_dir_path = pathlib.Path(os.getcwd()) / '.devagent'
+def handle_ontology_dump(args: argparse.Namespace) -> bool:
+    """Dump ontology graph to stdout or file."""
+    # Load graph from stdin or file
+    if args.input == "-":
+        graph = OntologyAPI.load(json.load(sys.stdin))
+    else:
+        with open(args.input) as f:
+            graph = OntologyAPI.load(json.load(f))
+    
+    # Output graph to stdout or file
+    if args.output == "-":
+        json.dump(OntologyAPI.dump(graph), sys.stdout, indent=2)
+        sys.stdout.write("\n")
+    else:
+        with open(args.output, "w") as f:
+            json.dump(OntologyAPI.dump(graph), f, indent=2)
+    
+    return True
 
-  # Create the API instance
-  api = InterpreterAPI(base_dir_path)
 
-  # Handle different session actions
-  if action == "create":
-    # Get optional session name
+def handle_ontology_add_node(args: argparse.Namespace) -> bool:
+    """Add a node to the ontology graph."""
+    # Load graph from stdin or file
+    if args.input == "-":
+        graph = OntologyAPI.load(json.load(sys.stdin))
+    else:
+        with open(args.input) as f:
+            graph = OntologyAPI.load(json.load(f))
+    
+    # Parse metadata
     try:
-      session_name = get_kwarg("name", "main")
-    except:
-      session_name = "main"
+        meta = json.loads(args.meta)
+    except json.JSONDecodeError:
+        logger.error(f"Invalid JSON metadata: {args.meta}")
+        return False
+    
+    # Add node
+    OntologyAPI.add_node(graph, args.id, args.label, args.kind, meta)
+    
+    # Output updated graph
+    if args.output == "-":
+        json.dump(OntologyAPI.dump(graph), sys.stdout, indent=2)
+        sys.stdout.write("\n")
+    else:
+        with open(args.output, "w") as f:
+            json.dump(OntologyAPI.dump(graph), f, indent=2)
+    
+    return True
 
-    try:
-      # Create a session
-      session = api.create_session(session_name)
-      stdout.write(f"Session created: {session_name}\n")
-      stdout.write(f"Session ID: {session.id}\n")
-      stdout.write(f"Session directory: {session.path}\n")
-    except Exception as e:
-      raise E(f"Failed to create session: {str(e)}")
 
-  elif action == "list":
-    try:
-      # List active sessions
-      sessions = api.list_sessions()
-      if sessions:
-        stdout.write("Active sessions:\n")
-        for session_info in sessions:
-          stdout.write(f"  ID: {session_info['id']}, Name: {session_info['name']}\n")
-          if 'kernels' in session_info and session_info['kernels']:
-            stdout.write(f"    Kernels: {len(session_info['kernels'])}\n")
-          stdout.write(f"    Path: {session_info.get('path', 'unknown')}\n")
-      else:
-        stdout.write("No active sessions\n")
-    except Exception as e:
-      raise E(f"Failed to list sessions: {str(e)}")
+def handle_ontology_add_edge(args: argparse.Namespace) -> bool:
+    """Add an edge to the ontology graph."""
+    # Load graph from stdin or file
+    if args.input == "-":
+        graph = OntologyAPI.load(json.load(sys.stdin))
+    else:
+        with open(args.input) as f:
+            graph = OntologyAPI.load(json.load(f))
+    
+    # Add edge
+    OntologyAPI.add_edge(graph, args.src, args.rel, args.dst)
+    
+    # Output updated graph
+    if args.output == "-":
+        json.dump(OntologyAPI.dump(graph), sys.stdout, indent=2)
+        sys.stdout.write("\n")
+    else:
+        with open(args.output, "w") as f:
+            json.dump(OntologyAPI.dump(graph), f, indent=2)
+    
+    return True
 
-  elif action == "execute":
-    # Get required code and session/kernel reference
-    code = get_kwarg("code")
 
-    try:
-      session_ref = get_kwarg("session", "main")
-    except:
-      session_ref = "main"
-
-    try:
-      kernel_name = get_kwarg("kernel", "main")
-    except:
-      kernel_name = "main"
-
-    try:
-      # Execute the code
-      kernel_ref = f"{session_ref}/{kernel_name}"
-      result = api.execute_code(kernel_ref, code)
-
-      # Display output
-      if result.stdout:
-        stdout.write(result.stdout)
-        # Add newline if not already present
-        if not result.stdout.endswith("\n"):
-          stdout.write("\n")
-
-      # Display error if any
-      if result.error:
-        stdout.write("ERROR:\n")
-        stdout.write(result.error)
-        stdout.write("\n")
-
-      # Report success/failure
-      if not result.success:
-        stdout.write("Execution failed\n")
-    except Exception as e:
-      raise E(f"Failed to execute code: {str(e)}")
-
-  elif action == "delete":
-    # Session ID/name is required for delete
-    session_ref = get_kwarg("session")
-
-    try:
-      # Delete the session
-      success = api.delete_session(session_ref)
-      if success:
-        stdout.write(f"Session '{session_ref}' deleted successfully\n")
-      else:
-        stdout.write(f"Session '{session_ref}' not found or could not be deleted\n")
-    except Exception as e:
-      raise E(f"Failed to delete session: {str(e)}")
-
-  else:
-    raise E(f"Unknown session action: {action}")
-
-def handle_interpreter_kernel(
-  pop_arg: Callable[[str], str],
-  get_kwarg: Callable[[str, Union[str, bool, Any]], str],
-  env: dict[str, str],
-  stdin: TextIO,
-  stdout: TextIO,
-  kwargs: dict[str, str],
-  remainder: Deque[str],
-  E: type[Exception],
-):
-  """
-  Handle the 'interpreter kernel' subcommand.
-  
-  Supports the following actions:
-  - create: Create a new kernel in a session
-  - list: List kernels (all or in a specific session)
-  - execute: Execute code in a kernel
-  - interrupt: Interrupt a running kernel
-  - restart: Restart a kernel
-  - delete: Delete a kernel
-  
-  Examples:
-    python -m DevAgent interpreter kernel create --session=dev_session --name=python_kernel
-    python -m DevAgent interpreter kernel list --session=dev_session
-    python -m DevAgent interpreter kernel execute --ref=dev_session/python_kernel --code="print('hello')"
-    python -m DevAgent interpreter kernel restart --ref=dev_session/python_kernel
-  """
-  # Get the kernel action
-  try:
-    action = pop_arg("action")
-  except Exception:
-    # Show usage if no action provided
-    stdout.write("Usage: python -m DevAgent interpreter kernel <action> [options]\n")
-    stdout.write("Actions: create, list, execute, interrupt, restart, delete\n")
-    return
-
-  # Get base directory from kwargs or use current directory
-  try:
-    base_dir = get_kwarg("dir")
-    base_dir_path = pathlib.Path(base_dir)
-  except:
-    base_dir_path = pathlib.Path(os.getcwd()) / '.devagent'
-
-  # Create the API instance
-  api = InterpreterAPI(base_dir_path)
-
-  # Handle different kernel actions
-  if action == "create":
-    # Get required session reference and optional kernel name
-    session_ref = get_kwarg("session")
+def handle_interpreter_session_create(args: argparse.Namespace) -> bool:
+    """Create a new interpreter session."""
+    # Create API instance
+    base_dir_path = pathlib.Path(args.dir)
+    
+    # Use DualModeInterpreter for the new DDD architecture by default
+    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
     
     try:
-      kernel_name = get_kwarg("name", "main")
-    except:
-      kernel_name = "main"
-      
-    try:
-      kernel_type = get_kwarg("type", "python3")
-    except:
-      kernel_type = "python3"
-
-    try:
-      # Create a kernel in the session
-      kernel = api.create_kernel(session_ref, kernel_name, kernel_type=kernel_type)
-      stdout.write(f"Kernel created: {kernel_name}\n")
-      stdout.write(f"Kernel ID: {kernel.id}\n")
-      stdout.write(f"Kernel Type: {kernel_type}\n")
-      stdout.write(f"In Session: {session_ref}\n")
+        # Create session
+        result = interpreter.create_session(args.name)
+        if result["success"]:
+            sys.stdout.write(f"Session created: {args.name}\n")
+            sys.stdout.write(f"Session ID: {result['session_id']}\n")
+            return True
+        else:
+            logger.error(f"Failed to create session: {result['error']}")
+            return False
     except Exception as e:
-      raise E(f"Failed to create kernel: {str(e)}")
+        logger.error(f"Failed to create session: {str(e)}")
+        return False
 
-  elif action == "list":
+
+def handle_interpreter_session_list(args: argparse.Namespace) -> bool:
+    """List all interpreter sessions."""
+    # Create API instance
+    base_dir_path = pathlib.Path(args.dir)
+    
+    # Use DualModeInterpreter for the new DDD architecture by default
+    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
+    
     try:
-      # Get optional session reference
-      try:
-        session_ref = get_kwarg("session")
-        session_specified = True
-      except:
-        session_specified = False
-      
-      if session_specified:
-        # List kernels in a specific session
-        session = api.get_session(session_ref)
-        if not session:
-          raise E(f"Session '{session_ref}' not found")
+        # List sessions
+        result = interpreter.list_sessions()
+        if result["success"]:
+            sessions = result["sessions"]
+            if sessions:
+                sys.stdout.write("Active sessions:\n")
+                for session in sessions:
+                    sys.stdout.write(f"  ID: {session['id']}, Name: {session['name']}\n")
+                    if 'kernel_count' in session:
+                        sys.stdout.write(f"    Kernels: {session['kernel_count']}\n")
+                    if 'path' in session:
+                        sys.stdout.write(f"    Path: {session['path']}\n")
+            else:
+                sys.stdout.write("No active sessions\n")
+            return True
+        else:
+            logger.error(f"Failed to list sessions: {result['error']}")
+            return False
+    except Exception as e:
+        logger.error(f"Failed to list sessions: {str(e)}")
+        return False
+
+
+def handle_interpreter_session_delete(args: argparse.Namespace) -> bool:
+    """Delete an interpreter session."""
+    # Create API instance
+    base_dir_path = pathlib.Path(args.dir)
+    
+    # Use DualModeInterpreter for the new DDD architecture by default
+    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
+    
+    try:
+        # Delete session
+        result = interpreter.delete_session(args.session)
+        if result["success"]:
+            sys.stdout.write(f"Session '{args.session}' deleted successfully\n")
+            return True
+        else:
+            logger.error(f"Failed to delete session: {result['error']}")
+            return False
+    except Exception as e:
+        logger.error(f"Failed to delete session: {str(e)}")
+        return False
+
+
+def handle_interpreter_session_execute(args: argparse.Namespace) -> bool:
+    """Execute code in a session."""
+    # Create API instance
+    base_dir_path = pathlib.Path(args.dir)
+    
+    # Construct kernel reference
+    kernel_ref = f"{args.session}/{args.kernel}"
+    
+    # Use DualModeInterpreter for the new DDD architecture by default
+    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
+    
+    try:
+        # Execute code
+        result = interpreter.execute_code(kernel_ref, args.code)
         
+        # Display output
+        if result["stdout"]:
+            sys.stdout.write(result["stdout"])
+            # Add newline if not already present
+            if not result["stdout"].endswith("\n"):
+                sys.stdout.write("\n")
+        
+        # Display error if any
+        if result["error"]:
+            sys.stdout.write("ERROR:\n")
+            sys.stdout.write(result["error"])
+            sys.stdout.write("\n")
+        
+        return result["success"]
+    except Exception as e:
+        logger.error(f"Failed to execute code: {str(e)}")
+        return False
+
+
+def handle_interpreter_kernel_create(args: argparse.Namespace) -> bool:
+    """Create a new kernel in a session."""
+    # Create API instance
+    base_dir_path = pathlib.Path(args.dir)
+    
+    # Use DualModeInterpreter for the new DDD architecture by default
+    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
+    
+    try:
+        # Create kernel
+        result = interpreter.create_kernel(args.session, args.name, args.type)
+        if result["success"]:
+            sys.stdout.write(f"Kernel created: {args.name}\n")
+            sys.stdout.write(f"Kernel ID: {result['kernel_id']}\n")
+            sys.stdout.write(f"Kernel Type: {args.type}\n")
+            sys.stdout.write(f"In Session: {args.session}\n")
+            return True
+        else:
+            logger.error(f"Failed to create kernel: {result['error']}")
+            return False
+    except Exception as e:
+        logger.error(f"Failed to create kernel: {str(e)}")
+        return False
+
+
+def handle_interpreter_kernel_list(args: argparse.Namespace) -> bool:
+    """List kernels in a session."""
+    # Create API instance
+    base_dir_path = pathlib.Path(args.dir)
+    
+    # Use legacy API directly for now as list_kernels isn't fully implemented in DualModeInterpreter
+    api = InterpreterAPI(base_dir_path)
+    
+    try:
+        # Get session
+        session = api.get_session(args.session)
+        if not session:
+            logger.error(f"Session '{args.session}' not found")
+            return False
+        
+        # List kernels
         kernels = session.list_kernels()
         if kernels:
-          stdout.write(f"Kernels in session '{session_ref}':\n")
-          for kernel in kernels:
-            status = "alive" if kernel.get("alive", False) else "dead"
-            stdout.write(f"  {kernel['name']} (ID: {kernel['id']}, Type: {kernel.get('kernel_type', 'unknown')}, Status: {status})\n")
+            sys.stdout.write(f"Kernels in session '{args.session}':\n")
+            for kernel in kernels:
+                status = "alive" if kernel.get("alive", False) else "dead"
+                sys.stdout.write(f"  {kernel['name']} (ID: {kernel['id']}, Type: {kernel.get('kernel_type', 'unknown')}, Status: {status})\n")
         else:
-          stdout.write(f"No kernels in session '{session_ref}'\n")
-      else:
-        # List all kernels across all sessions
-        kernels = api.list_kernels()
-        if kernels:
-          stdout.write("All kernels:\n")
-          for kernel in kernels:
-            status = "alive" if kernel.get("alive", False) else "dead"
-            session_id = kernel.get("session_id", "unknown")
-            stdout.write(f"  {kernel['name']} (ID: {kernel['id']}, Session: {session_id}, Type: {kernel.get('kernel_type', 'unknown')}, Status: {status})\n")
+            sys.stdout.write(f"No kernels in session '{args.session}'\n")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to list kernels: {str(e)}")
+        return False
+
+
+def handle_interpreter_kernel_execute(args: argparse.Namespace) -> bool:
+    """Execute code in a kernel."""
+    # Create API instance
+    base_dir_path = pathlib.Path(args.dir)
+    
+    # Use DualModeInterpreter for the new DDD architecture by default
+    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
+    
+    try:
+        # Execute code
+        if args.file:
+            # Read code from file
+            with open(args.file, 'r') as f:
+                code = f.read()
         else:
-          stdout.write("No kernels found\n")
+            code = args.code
+        
+        # Execute code
+        result = interpreter.execute_code(args.ref, code)
+        
+        # Display output
+        if result["stdout"]:
+            sys.stdout.write(result["stdout"])
+            # Add newline if not already present
+            if not result["stdout"].endswith("\n"):
+                sys.stdout.write("\n")
+        
+        # Display error if any
+        if result["error"]:
+            sys.stdout.write("ERROR:\n")
+            sys.stdout.write(result["error"])
+            sys.stdout.write("\n")
+        
+        return result["success"]
     except Exception as e:
-      raise E(f"Failed to list kernels: {str(e)}")
+        logger.error(f"Failed to execute code: {str(e)}")
+        return False
 
-  elif action == "execute":
-    # Get required kernel reference and code
-    kernel_ref = get_kwarg("ref")
-    code = get_kwarg("code")
 
+def handle_interpreter_kernel_restart(args: argparse.Namespace) -> bool:
+    """Restart a kernel."""
+    # Create API instance
+    base_dir_path = pathlib.Path(args.dir)
+    
+    # Use DualModeInterpreter for the new DDD architecture by default
+    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
+    
     try:
-      # Execute the code
-      result = api.execute_code(kernel_ref, code)
-
-      # Display output
-      if result.stdout:
-        stdout.write(result.stdout)
-        # Add newline if not already present
-        if not result.stdout.endswith("\n"):
-          stdout.write("\n")
-
-      # Display error if any
-      if result.error:
-        stdout.write("ERROR:\n")
-        stdout.write(result.error)
-        stdout.write("\n")
-
-      # Report success/failure
-      if not result.success:
-        stdout.write("Execution failed\n")
+        # Restart kernel
+        result = interpreter.restart_kernel(args.ref)
+        if result["success"]:
+            sys.stdout.write(f"Kernel '{args.ref}' restarted successfully\n")
+            return True
+        else:
+            logger.error(f"Failed to restart kernel: {result['error']}")
+            return False
     except Exception as e:
-      raise E(f"Failed to execute code: {str(e)}")
+        logger.error(f"Failed to restart kernel: {str(e)}")
+        return False
 
-  elif action == "interrupt":
-    # Get required kernel reference
-    kernel_ref = get_kwarg("ref")
 
+def handle_interpreter_kernel_interrupt(args: argparse.Namespace) -> bool:
+    """Interrupt a kernel."""
+    # Create API instance
+    base_dir_path = pathlib.Path(args.dir)
+    
+    # Use DualModeInterpreter for the new DDD architecture by default
+    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
+    
     try:
-      # Get the kernel
-      kernel = api.get_kernel(kernel_ref)
-      if not kernel:
-        raise E(f"Kernel '{kernel_ref}' not found")
-      
-      # Interrupt the kernel
-      success = kernel.interrupt()
-      if success:
-        stdout.write(f"Kernel '{kernel_ref}' interrupted successfully\n")
-      else:
-        stdout.write(f"Failed to interrupt kernel '{kernel_ref}'\n")
+        # Interrupt kernel
+        result = interpreter.interrupt_kernel(args.ref)
+        if result["success"]:
+            sys.stdout.write(f"Kernel '{args.ref}' interrupted successfully\n")
+            return True
+        else:
+            logger.error(f"Failed to interrupt kernel: {result['error']}")
+            return False
     except Exception as e:
-      raise E(f"Failed to interrupt kernel: {str(e)}")
+        logger.error(f"Failed to interrupt kernel: {str(e)}")
+        return False
 
-  elif action == "restart":
-    # Get required kernel reference
-    kernel_ref = get_kwarg("ref")
 
+def handle_interpreter_kernel_delete(args: argparse.Namespace) -> bool:
+    """Delete a kernel."""
+    # Create API instance
+    base_dir_path = pathlib.Path(args.dir)
+    
+    # Use DualModeInterpreter for the new DDD architecture by default
+    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
+    
     try:
-      # Get the kernel
-      kernel = api.get_kernel(kernel_ref)
-      if not kernel:
-        raise E(f"Kernel '{kernel_ref}' not found")
-      
-      # Restart the kernel
-      success = kernel.restart()
-      if success:
-        stdout.write(f"Kernel '{kernel_ref}' restarted successfully\n")
-      else:
-        stdout.write(f"Failed to restart kernel '{kernel_ref}'\n")
+        # Delete kernel
+        result = interpreter.delete_kernel(args.ref)
+        if result["success"]:
+            sys.stdout.write(f"Kernel '{args.ref}' deleted successfully\n")
+            return True
+        else:
+            logger.error(f"Failed to delete kernel: {result['error']}")
+            return False
     except Exception as e:
-      raise E(f"Failed to restart kernel: {str(e)}")
+        logger.error(f"Failed to delete kernel: {str(e)}")
+        return False
 
-  elif action == "delete":
-    # Get required kernel reference
-    kernel_ref = get_kwarg("ref")
 
-    try:
-      # Delete the kernel
-      success = api.delete_kernel(kernel_ref)
-      if success:
-        stdout.write(f"Kernel '{kernel_ref}' deleted successfully\n")
-      else:
-        stdout.write(f"Failed to delete kernel '{kernel_ref}'\n")
-    except Exception as e:
-      raise E(f"Failed to delete kernel: {str(e)}")
+def setup_argument_parser() -> argparse.ArgumentParser:
+    """Set up the argument parser with subcommands."""
+    parser = argparse.ArgumentParser(
+        description="DevAgent: Agentic Development Tool",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    # Common arguments for all commands
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        help="Set logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)"
+    )
+    
+    # Create subparsers for different commands
+    subparsers = parser.add_subparsers(dest="command", help="Command to run")
+    
+    # === Ontology commands ===
+    ontology_parser = subparsers.add_parser("ontology", help="Ontology graph operations")
+    ontology_subparsers = ontology_parser.add_subparsers(dest="subcommand", help="Ontology operation")
+    
+    # Ontology init
+    init_parser = ontology_subparsers.add_parser("init", help="Initialize a new ontology graph")
+    init_parser.add_argument("-o", "--output", default="-", help="Output file (default: stdout)")
+    init_parser.set_defaults(func=handle_ontology_init)
+    
+    # Ontology info
+    info_parser = ontology_subparsers.add_parser("info", help="Display ontology graph information")
+    info_parser.add_argument("-f", "--input", default="-", help="Input file (default: stdin)")
+    info_parser.set_defaults(func=handle_ontology_info)
+    
+    # Ontology dump
+    dump_parser = ontology_subparsers.add_parser("dump", help="Dump ontology graph")
+    dump_parser.add_argument("-f", "--input", default="-", help="Input file (default: stdin)")
+    dump_parser.add_argument("-o", "--output", default="-", help="Output file (default: stdout)")
+    dump_parser.set_defaults(func=handle_ontology_dump)
+    
+    # Ontology add-node
+    add_node_parser = ontology_subparsers.add_parser("add-node", help="Add a node to the ontology graph")
+    add_node_parser.add_argument("-f", "--input", default="-", help="Input file (default: stdin)")
+    add_node_parser.add_argument("-o", "--output", default="-", help="Output file (default: stdout)")
+    add_node_parser.add_argument("id", help="Node ID")
+    add_node_parser.add_argument("label", help="Node label")
+    add_node_parser.add_argument("--kind", default="concept", help="Node kind (default: concept)")
+    add_node_parser.add_argument("--meta", default="{}", help="Node metadata as JSON string")
+    add_node_parser.set_defaults(func=handle_ontology_add_node)
+    
+    # Ontology add-edge
+    add_edge_parser = ontology_subparsers.add_parser("add-edge", help="Add an edge to the ontology graph")
+    add_edge_parser.add_argument("-f", "--input", default="-", help="Input file (default: stdin)")
+    add_edge_parser.add_argument("-o", "--output", default="-", help="Output file (default: stdout)")
+    add_edge_parser.add_argument("src", help="Source node ID")
+    add_edge_parser.add_argument("rel", help="Relationship type")
+    add_edge_parser.add_argument("dst", help="Destination node ID")
+    add_edge_parser.set_defaults(func=handle_ontology_add_edge)
+    
+    # === Interpreter commands ===
+    interpreter_parser = subparsers.add_parser("interpreter", help="Interpreter operations")
+    interpreter_parser.add_argument(
+        "--dir",
+        default=str(pathlib.Path.cwd() / '.devagent'),
+        help="Base directory for interpreter files"
+    )
+    interpreter_parser.add_argument(
+        "--legacy",
+        action="store_true",
+        help="Use legacy interpreter implementation instead of the new DDD architecture"
+    )
+    
+    interpreter_subparsers = interpreter_parser.add_subparsers(dest="subcommand", help="Interpreter operation")
+    
+    # Session commands
+    session_parser = interpreter_subparsers.add_parser("session", help="Session management operations")
+    session_subparsers = session_parser.add_subparsers(dest="session_command", help="Session operation")
+    
+    # Session create
+    session_create_parser = session_subparsers.add_parser("create", help="Create a new session")
+    session_create_parser.add_argument("--name", default="main", help="Session name (default: main)")
+    session_create_parser.set_defaults(func=handle_interpreter_session_create)
+    
+    # Session list
+    session_list_parser = session_subparsers.add_parser("list", help="List all sessions")
+    session_list_parser.set_defaults(func=handle_interpreter_session_list)
+    
+    # Session delete
+    session_delete_parser = session_subparsers.add_parser("delete", help="Delete a session")
+    session_delete_parser.add_argument("session", help="Session reference (name or ID)")
+    session_delete_parser.set_defaults(func=handle_interpreter_session_delete)
+    
+    # Session execute
+    session_execute_parser = session_subparsers.add_parser("execute", help="Execute code in a session")
+    session_execute_parser.add_argument("--session", default="main", help="Session reference (default: main)")
+    session_execute_parser.add_argument("--kernel", default="main", help="Kernel name (default: main)")
+    session_execute_parser.add_argument("--code", required=True, help="Code to execute")
+    session_execute_parser.set_defaults(func=handle_interpreter_session_execute)
+    
+    # Kernel commands
+    kernel_parser = interpreter_subparsers.add_parser("kernel", help="Kernel management operations")
+    kernel_subparsers = kernel_parser.add_subparsers(dest="kernel_command", help="Kernel operation")
+    
+    # Kernel create
+    kernel_create_parser = kernel_subparsers.add_parser("create", help="Create a new kernel")
+    kernel_create_parser.add_argument("--session", required=True, help="Session reference")
+    kernel_create_parser.add_argument("--name", default="main", help="Kernel name (default: main)")
+    kernel_create_parser.add_argument("--type", default="python3", help="Kernel type (default: python3)")
+    kernel_create_parser.set_defaults(func=handle_interpreter_kernel_create)
+    
+    # Kernel list
+    kernel_list_parser = kernel_subparsers.add_parser("list", help="List kernels in a session")
+    kernel_list_parser.add_argument("--session", required=True, help="Session reference")
+    kernel_list_parser.set_defaults(func=handle_interpreter_kernel_list)
+    
+    # Kernel execute
+    kernel_execute_parser = kernel_subparsers.add_parser("execute", help="Execute code in a kernel")
+    kernel_execute_parser.add_argument("--ref", required=True, help="Kernel reference (session/kernel or kernel ID)")
+    code_group = kernel_execute_parser.add_mutually_exclusive_group(required=True)
+    code_group.add_argument("--code", help="Code to execute")
+    code_group.add_argument("--file", help="File containing code to execute")
+    kernel_execute_parser.set_defaults(func=handle_interpreter_kernel_execute)
+    
+    # Kernel restart
+    kernel_restart_parser = kernel_subparsers.add_parser("restart", help="Restart a kernel")
+    kernel_restart_parser.add_argument("--ref", required=True, help="Kernel reference")
+    kernel_restart_parser.set_defaults(func=handle_interpreter_kernel_restart)
+    
+    # Kernel interrupt
+    kernel_interrupt_parser = kernel_subparsers.add_parser("interrupt", help="Interrupt a kernel")
+    kernel_interrupt_parser.add_argument("--ref", required=True, help="Kernel reference")
+    kernel_interrupt_parser.set_defaults(func=handle_interpreter_kernel_interrupt)
+    
+    # Kernel delete
+    kernel_delete_parser = kernel_subparsers.add_parser("delete", help="Delete a kernel")
+    kernel_delete_parser.add_argument("--ref", required=True, help="Kernel reference")
+    kernel_delete_parser.set_defaults(func=handle_interpreter_kernel_delete)
+    
+    return parser
 
-  else:
-    raise E(f"Unknown kernel action: {action}")
-
-def handle_interpreter(
-  pop_arg: Callable[[str], str],
-  get_kwarg: Callable[[str, Union[str, bool, Any]], str],
-  env: dict[str, str],
-  stdin: TextIO,
-  stdout: TextIO,
-  kwargs: dict[str, str],
-  remainder: deque[str],
-  E: type[Exception],
-):
-  """Handle the 'interpreter' subcommand with its operations.
-  
-  Supports the following operations:
-  - session: Manage computation sessions
-  - kernel: Manage computation kernels
-  
-  Examples:
-    python -m DevAgent interpreter session create --name=dev_session
-    python -m DevAgent interpreter session list
-    python -m DevAgent interpreter kernel create --session=dev_session --name=main
-    python -m DevAgent interpreter kernel execute --ref=dev_session/main --code="print('hello')"
-  """
-
-  # Get the interpreter operation (e.g., "session", "kernel")
-  op = pop_arg("operation")
-
-  if op == "session":
-    handle_interpreter_session(pop_arg, get_kwarg, env, stdin, stdout, kwargs, remainder, E)
-  elif op == "kernel":
-    handle_interpreter_kernel(pop_arg, get_kwarg, env, stdin, stdout, kwargs, remainder, E)
-  else:
-    raise E(f"Unknown interpreter operation: {op}")
-
-def main(
-  args: deque[str],
-  kwargs: dict[str, str],
-  remainder: deque[str],
-  env: dict[str, str],
-  stdin: TextIO,
-  stdout: TextIO,
-) -> bool:
-
-  class E(Exception):
-    ...
-
-  # Function to pop and return the next argument from args queue
-  def _pop_arg(name: str) -> str:
-    """Pop the next argument from the args queue or raise an exception if empty.
-
-        Args:
-            name: Name of the argument for error reporting
-
-        Returns:
-            The next argument value
-
-        Raises:
-            E: If no more arguments are available
-        """
-    try:
-      return args.popleft()
-    except IndexError:
-      raise E(f"missing positional arg: `{name.upper()}`")
-
-  NO_DEFAULT = type("NO_DEFAULT", (), {})
-
-  # Function to get a keyword argument with optional default value
-  def _get_kwarg(k: str, default: Union[str, bool, type[NO_DEFAULT]] = NO_DEFAULT) -> str:
-    """Get a keyword argument or return default if provided.
-
-        Args:
-            k: Keyword argument name
-            default: Default value to return if not found, or NO_DEFAULT to require the argument
-
-        Returns:
-            The keyword argument value
-
-        Raises:
-            E: If the argument is required but not found
-        """
-    assert default is NO_DEFAULT or isinstance(default, (str, bool))
-    try:
-      return kwargs.get(k, default) if default is not NO_DEFAULT else kwargs[k]
-    except KeyError:
-      raise E(f"Missing Expected Flag: `--{k}`")
-
-  try:
-    subcmd = _pop_arg("subcmd")
-
-    if subcmd == "ontology":
-      handle_ontology(
-        _pop_arg,
-        _get_kwarg,
-        env,
-        stdin,
-        stdout,
-        kwargs,
-        remainder,
-        E,
-      )
-    elif subcmd == "interpreter":
-      handle_interpreter(
-        _pop_arg,
-        _get_kwarg,
-        env,
-        stdin,
-        stdout,
-        kwargs,
-        remainder,
-        E,
-      )
-    else:
-      raise E(f"Unknown subcommand: {subcmd}")
-
-  except E as e:
-    logger.info("CLI Error", exc_info=True)
-    logger.critical(str(e))
-    return False
-  return True
 
 class CLI:
+    @classmethod
+    @contextlib.contextmanager
+    def session(cls):
+        try:
+            try:
+                logging.basicConfig(stream=sys.stderr, level=os.environ.get("LOG_LEVEL", "INFO"))
+            except Exception as e:
+                logging.basicConfig(stream=sys.stderr, level="INFO")
+                logger.critical(f"Bad Log Configuration: {e}")
+                yield False
+            else:
+                logger.debug("inizio")
+                yield True  # Any CLI Exceptions will be raised here
+        except (SystemExit,): ...
+        except: logger.critical("Unhandled Exception", exc_info=True)
+        finally:
+            logger.debug("fin")
+            logging.shutdown()
+            sys.stdout.flush()
+            sys.stderr.flush()
 
-  @classmethod
-  @contextlib.contextmanager
-  def session(cls):
-    try:
-      try:
-        logging.basicConfig(stream=sys.stderr, level=os.environ.get("LOG_LEVEL", "INFO"))
-      except Exception as e:
-        logging.basicConfig(stream=sys.stderr, level="INFO")
-        logger.critical(f"Bad Log Configuration: {e}")
-        yield False
-      else:
-        logger.debug("inizio")
-        yield True # Any CLI Exceptions will be raised here
-    except:
-      logger.critical("Unhandled Exception", exc_info=True)
-    finally:
-      logger.debug("fin")
-      logging.shutdown()
-      sys.stdout.flush()
-      sys.stderr.flush()
 
-  @classmethod
-  def parse_flag(cls, flag: str) -> tuple[str, str]:
-    assert flag.startswith("-")
-    if "=" in flag:
-      return flag.lstrip("-").split("=", maxsplit=1)
-    else:
-      return flag.lstrip("-"), True
+def main() -> int:
+    """Main entry point for the program."""
+    parser = setup_argument_parser()
+    args = parser.parse_args()
+    
+    # Configure logging
+    logging.basicConfig(
+        level=getattr(logging, args.log_level.upper()),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    
+    # If no command is specified, show help
+    if not hasattr(args, "func"):
+        if hasattr(args, "subcommand") and args.subcommand is None:
+            # Show help for the specific command
+            if args.command == "ontology":
+                parser._actions[1].choices["ontology"].print_help()
+            elif args.command == "interpreter":
+                parser._actions[1].choices["interpreter"].print_help()
+            else:
+                parser.print_help()
+        elif args.command is None:
+            parser.print_help()
+        return 1
+    
+    # Execute the appropriate handler
+    success = args.func(args)
+    return 0 if success else 1
 
-  @classmethod
-  def parse_argv(cls, argv: list[str]) -> tuple[deque[str], dict[str, str], deque[str]]:
-    """Parses Argv returning ( args, kwargs, remainder )"""
-    remainder = []
-    if "--" in argv:
-      idx = argv.index("--")
-      remainder = argv[idx + 1:]
-      argv = argv[:idx]
-    logger.debug(f"{remainder=}")
-
-    args = deque(a for a in argv if not a.startswith("-"))
-    logger.debug(f"{args=}")
-    flags = dict(CLI.parse_flag(f) for f in argv if f.startswith("-"))
-    logger.debug(f"{flags=}")
-    return (args, flags, deque(remainder))
 
 if __name__ == "__main__":
-  RC = 2
-  with CLI.session() as _ok:
-    if _ok:
-      RC = (0 if main(
-        *CLI.parse_argv(sys.argv[1:]),
-        dict(os.environ),
-        sys.stdin,
-        sys.stdout,
-      ) else 1)
-  exit(RC)
+    with CLI.session() as ok:
+        if ok:
+            exit_code = main()
+            sys.exit(exit_code)
+        else:
+            sys.exit(2)
