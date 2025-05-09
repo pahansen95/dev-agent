@@ -13,8 +13,8 @@ import contextlib
 from typing import Union, Any, TextIO, Optional
 from collections import deque
 
-from DevAgent.api import InterpreterAPI, OntologyAPI
-from DevAgent.interpreter.compat import DualModeInterpreter
+from DevAgent.api import OntologyAPI
+from DevAgent.interpreter.factory import create_interpreter
 
 SCRIPT = pathlib.Path(__file__)
 CONTEXT = SCRIPT.parent  # The context of Script
@@ -129,10 +129,10 @@ def handle_interpreter_session_create(args: argparse.Namespace) -> bool:
     """Create a new interpreter session."""
     # Create API instance
     base_dir_path = pathlib.Path(args.dir)
-    
-    # Use DualModeInterpreter for the new DDD architecture by default
-    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
-    
+
+    # Create interpreter facade with all dependencies
+    interpreter = create_interpreter(base_dir_path)
+
     try:
         # Create session
         result = interpreter.create_session(args.name)
@@ -152,10 +152,10 @@ def handle_interpreter_session_list(args: argparse.Namespace) -> bool:
     """List all interpreter sessions."""
     # Create API instance
     base_dir_path = pathlib.Path(args.dir)
-    
-    # Use DualModeInterpreter for the new DDD architecture by default
-    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
-    
+
+    # Create interpreter facade with all dependencies
+    interpreter = create_interpreter(base_dir_path)
+
     try:
         # List sessions
         result = interpreter.list_sessions()
@@ -184,10 +184,10 @@ def handle_interpreter_session_delete(args: argparse.Namespace) -> bool:
     """Delete an interpreter session."""
     # Create API instance
     base_dir_path = pathlib.Path(args.dir)
-    
-    # Use DualModeInterpreter for the new DDD architecture by default
-    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
-    
+
+    # Create interpreter facade with all dependencies
+    interpreter = create_interpreter(base_dir_path)
+
     try:
         # Delete session
         result = interpreter.delete_session(args.session)
@@ -206,30 +206,30 @@ def handle_interpreter_session_execute(args: argparse.Namespace) -> bool:
     """Execute code in a session."""
     # Create API instance
     base_dir_path = pathlib.Path(args.dir)
-    
+
     # Construct kernel reference
     kernel_ref = f"{args.session}/{args.kernel}"
-    
-    # Use DualModeInterpreter for the new DDD architecture by default
-    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
-    
+
+    # Create interpreter facade with all dependencies
+    interpreter = create_interpreter(base_dir_path)
+
     try:
         # Execute code
         result = interpreter.execute_code(kernel_ref, args.code)
-        
+
         # Display output
         if result["stdout"]:
             sys.stdout.write(result["stdout"])
             # Add newline if not already present
             if not result["stdout"].endswith("\n"):
                 sys.stdout.write("\n")
-        
+
         # Display error if any
         if result["error"]:
             sys.stdout.write("ERROR:\n")
             sys.stdout.write(result["error"])
             sys.stdout.write("\n")
-        
+
         return result["success"]
     except Exception as e:
         logger.error(f"Failed to execute code: {str(e)}")
@@ -240,10 +240,10 @@ def handle_interpreter_kernel_create(args: argparse.Namespace) -> bool:
     """Create a new kernel in a session."""
     # Create API instance
     base_dir_path = pathlib.Path(args.dir)
-    
-    # Use DualModeInterpreter for the new DDD architecture by default
-    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
-    
+
+    # Create interpreter facade with all dependencies
+    interpreter = create_interpreter(base_dir_path)
+
     try:
         # Create kernel
         result = interpreter.create_kernel(args.session, args.name, args.type)
@@ -265,23 +265,23 @@ def handle_interpreter_kernel_list(args: argparse.Namespace) -> bool:
     """List kernels in a session."""
     # Create API instance
     base_dir_path = pathlib.Path(args.dir)
-    
-    # Use legacy API directly for now as list_kernels isn't fully implemented in DualModeInterpreter
-    api = InterpreterAPI(base_dir_path)
-    
+
+    # Create interpreter facade with all dependencies
+    interpreter = create_interpreter(base_dir_path)
+
     try:
-        # Get session
-        session = api.get_session(args.session)
-        if not session:
-            logger.error(f"Session '{args.session}' not found")
+        # List kernels for the session
+        result = interpreter.list_kernels(args.session)
+        if not result["success"]:
+            logger.error(f"Failed to list kernels: {result['error']}")
             return False
-        
-        # List kernels
-        kernels = session.list_kernels()
+
+        # Display kernel information
+        kernels = result["kernels"]
         if kernels:
             sys.stdout.write(f"Kernels in session '{args.session}':\n")
             for kernel in kernels:
-                status = "alive" if kernel.get("alive", False) else "dead"
+                status = "alive" if kernel.get("is_alive", False) else "dead"
                 sys.stdout.write(f"  {kernel['name']} (ID: {kernel['id']}, Type: {kernel.get('kernel_type', 'unknown')}, Status: {status})\n")
         else:
             sys.stdout.write(f"No kernels in session '{args.session}'\n")
@@ -295,10 +295,10 @@ def handle_interpreter_kernel_execute(args: argparse.Namespace) -> bool:
     """Execute code in a kernel."""
     # Create API instance
     base_dir_path = pathlib.Path(args.dir)
-    
-    # Use DualModeInterpreter for the new DDD architecture by default
-    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
-    
+
+    # Create interpreter facade with all dependencies
+    interpreter = create_interpreter(base_dir_path)
+
     try:
         # Execute code
         if args.file:
@@ -307,23 +307,23 @@ def handle_interpreter_kernel_execute(args: argparse.Namespace) -> bool:
                 code = f.read()
         else:
             code = args.code
-        
+
         # Execute code
         result = interpreter.execute_code(args.ref, code)
-        
+
         # Display output
         if result["stdout"]:
             sys.stdout.write(result["stdout"])
             # Add newline if not already present
             if not result["stdout"].endswith("\n"):
                 sys.stdout.write("\n")
-        
+
         # Display error if any
         if result["error"]:
             sys.stdout.write("ERROR:\n")
             sys.stdout.write(result["error"])
             sys.stdout.write("\n")
-        
+
         return result["success"]
     except Exception as e:
         logger.error(f"Failed to execute code: {str(e)}")
@@ -334,10 +334,10 @@ def handle_interpreter_kernel_restart(args: argparse.Namespace) -> bool:
     """Restart a kernel."""
     # Create API instance
     base_dir_path = pathlib.Path(args.dir)
-    
-    # Use DualModeInterpreter for the new DDD architecture by default
-    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
-    
+
+    # Create interpreter facade with all dependencies
+    interpreter = create_interpreter(base_dir_path)
+
     try:
         # Restart kernel
         result = interpreter.restart_kernel(args.ref)
@@ -356,10 +356,10 @@ def handle_interpreter_kernel_interrupt(args: argparse.Namespace) -> bool:
     """Interrupt a kernel."""
     # Create API instance
     base_dir_path = pathlib.Path(args.dir)
-    
-    # Use DualModeInterpreter for the new DDD architecture by default
-    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
-    
+
+    # Create interpreter facade with all dependencies
+    interpreter = create_interpreter(base_dir_path)
+
     try:
         # Interrupt kernel
         result = interpreter.interrupt_kernel(args.ref)
@@ -378,10 +378,10 @@ def handle_interpreter_kernel_delete(args: argparse.Namespace) -> bool:
     """Delete a kernel."""
     # Create API instance
     base_dir_path = pathlib.Path(args.dir)
-    
-    # Use DualModeInterpreter for the new DDD architecture by default
-    interpreter = DualModeInterpreter(base_dir_path, use_ddd=not args.legacy)
-    
+
+    # Create interpreter facade with all dependencies
+    interpreter = create_interpreter(base_dir_path)
+
     try:
         # Delete kernel
         result = interpreter.delete_kernel(args.ref)
@@ -458,11 +458,6 @@ def setup_argument_parser() -> argparse.ArgumentParser:
         "--dir",
         default=str(pathlib.Path.cwd() / '.devagent'),
         help="Base directory for interpreter files"
-    )
-    interpreter_parser.add_argument(
-        "--legacy",
-        action="store_true",
-        help="Use legacy interpreter implementation instead of the new DDD architecture"
     )
     
     interpreter_subparsers = interpreter_parser.add_subparsers(dest="subcommand", help="Interpreter operation")
