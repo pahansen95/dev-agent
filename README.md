@@ -40,6 +40,31 @@ Automating the end to end process requires:
 
 More formally the Automation is based on a closed loop transfer function from systems control theory. In depth information can be found in [the formal framework](./docs/AgenticDeveloperArchitecture.md).
 
+## Testing
+
+The project includes comprehensive test suites to validate functionality:
+
+- **CLI Tests**: Tests for the command-line interface
+  ```bash
+  python -m tests.run_cli_tests
+  ```
+
+- **Event-Driven Architecture Tests**: Tests for the persistent kernel architecture
+  ```bash
+  python -m tests.run_event_driven_tests
+  ```
+
+Test suite options:
+- `--verbose` or `-v`: Enable verbose output
+- `--unit-only`: Run only unit tests
+- `--integration-only`: Run only integration tests
+
+For example:
+```bash
+# Run only unit tests for the event-driven architecture
+python -m tests.run_event_driven_tests --unit-only
+```
+
 ## Contributor's Guide
 
 We keep the layout of the source code simple following these three rules:

@@ -58,11 +58,7 @@ def apply_style_to_file(file: Path) -> bool:
   try:
     print(f"Formatting {file}")
     # In-place formatting with inline style dict
-    reformatted, _, _ = FormatFile(
-      filename=str(file),
-      in_place=True,
-      style_config=YAPF_STYLE
-    )
+    reformatted, _, _ = FormatFile(filename=str(file), in_place=True, style_config=YAPF_STYLE)
     return reformatted
   except Exception as e:
     print(f"Error formatting {file}: {e}", file=sys.stderr)
@@ -79,7 +75,7 @@ def find_files(dir_tree: Path) -> Generator[Path, None, None]:
       Path objects for each Python file found
   """
   assert dir_tree.exists() and dir_tree.resolve().is_dir(), f"Directory {dir_tree} does not exist or is not a directory"
-  
+
   # Iterate over all sibling directories
   for sibling in dir_tree.iterdir():
     if sibling.is_dir():
@@ -97,7 +93,7 @@ def main(*targets: str) -> List[str]:
       List of paths that were skipped (not found or not accessible)
   """
   skipped = []
-  
+
   for trgt in targets:
     trgt_path = PROJ_ROOT / trgt
     if trgt_path.resolve().is_file() and trgt_path.suffix == '.py':
@@ -108,7 +104,7 @@ def main(*targets: str) -> List[str]:
     else:
       print(f"Skipping {trgt_path} - not a Python file or directory")
       skipped.append(str(trgt_path))
-  
+
   return skipped
 
 if __name__ == '__main__':
@@ -117,9 +113,9 @@ if __name__ == '__main__':
     targets = sys.argv[1:]
   else:
     targets = ['src', 'tests', Path(__file__).name]
-  
+
   skipped = main(*targets)
-  
+
   if skipped:
     print(f"\nSkipped {len(skipped)} targets:")
     for path in skipped:
