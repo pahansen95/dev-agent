@@ -8,9 +8,15 @@ The CLI has been refactored to use:
 
 1. Modern Python `argparse` for robust command-line argument handling
 2. Domain-Driven Design (DDD) architecture for the Interpreter component
-3. Comprehensive test coverage with unit and integration tests
+3. Event-driven architecture with persistent kernel processes
+4. Comprehensive test coverage with unit and integration tests
 
-The new DDD architecture provides a cleaner separation of concerns, better testability, and more maintainable code. The CLI integrates with this architecture through the `DualModeInterpreter` compatibility layer, which allows for a smooth transition from the legacy architecture to the new DDD-based implementation.
+The new event-driven DDD architecture provides:
+- Cleaner separation of concerns
+- Better testability
+- More maintainable code
+- Persistent kernel processes that continue running after CLI commands complete
+- Automatic reconciliation between desired and actual state
 
 ## Commands
 
@@ -58,7 +64,7 @@ python -m DevAgent interpreter session delete my_session
 #### Kernel Commands
 
 ```bash
-# Create a new kernel in a session
+# Create a new kernel in a session (will start in the background)
 python -m DevAgent interpreter kernel create --session=my_session --name=my_kernel --type=python3
 
 # List kernels in a session
@@ -77,15 +83,59 @@ python -m DevAgent interpreter kernel interrupt --ref=my_session/my_kernel
 
 # Delete a kernel
 python -m DevAgent interpreter kernel delete --ref=my_session/my_kernel
+
+# Get the status of a kernel
+python -m DevAgent interpreter kernel status --ref=my_session/my_kernel
+
+# Start a kernel (if not already running)
+python -m DevAgent interpreter kernel start --ref=my_session/my_kernel
+
+# Stop a kernel
+python -m DevAgent interpreter kernel stop --ref=my_session/my_kernel
 ```
 
-## Legacy Mode
+## Persistent Kernel Architecture
 
-The CLI can operate in both the new DDD-based architecture (default) and the legacy architecture. To use the legacy architecture, add the `--legacy` flag to any interpreter command:
+DevAgent now supports persistent kernel processes that continue running even after CLI commands exit. This enables more efficient workflows:
+
+1. **Create a kernel once, use it repeatedly**: Kernel processes stay alive across CLI invocations
+2. **View kernel status**: Use the `status` command to check if kernels are running
+3. **Explicit process control**: Use `start` and `stop` commands to manually control kernels
+4. **Process reconciliation**: DevAgent continuously monitors and reconciles kernel processes to ensure desired state matches actual state
+
+### Example Workflow
 
 ```bash
-python -m DevAgent interpreter --legacy session create --name=my_session
+# Create a session
+python -m DevAgent interpreter session create --name data_analysis
+
+# Create a Python kernel (this starts the kernel in the background)
+python -m DevAgent interpreter kernel create --session data_analysis --name python3 --type python3
+
+# Check kernel status (will show RUNNING if started successfully)
+python -m DevAgent interpreter kernel status --ref data_analysis/python3
+
+# Execute code in the kernel (quickly - no kernel startup delay)
+python -m DevAgent interpreter kernel execute --ref data_analysis/python3 --code "import numpy as np; np.random.rand(3,3)"
+
+# Execute another command (kernel is still running)
+python -m DevAgent interpreter kernel execute --ref data_analysis/python3 --code "import pandas as pd; pd.DataFrame({'a': [1,2,3]})"
+
+# Stop the kernel when done
+python -m DevAgent interpreter kernel stop --ref data_analysis/python3
 ```
+
+### How It Works
+
+The persistent kernel architecture works using:
+
+1. **Event-driven communication**: Commands publish events to a filesystem-based event bus
+2. **Dual-state model**: System tracks both desired and actual state of kernels
+3. **Kernel operator**: Continuously reconciles actual state with desired state
+4. **State persistence**: Runtime state is persisted to the filesystem
+5. **Cooperative processing**: Multiple CLI processes cooperate via the event system
+
+This allows kernels to remain running even when no DevAgent CLI processes are active.
 
 ## Testing
 

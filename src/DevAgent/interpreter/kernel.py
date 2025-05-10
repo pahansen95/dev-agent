@@ -69,37 +69,71 @@ class KernelController:
       workspace_dir=workspace_dir)
 
     try:
+      # Ensure connection file exists
+      if "connection_file" not in connection_info or not connection_info["connection_file"]:
+        logger.error(f"No connection file provided for kernel {controller.id}")
+        return controller
+
+      connection_file = connection_info["connection_file"]
+      if not Path(connection_file).exists():
+        logger.error(f"Connection file not found for kernel {controller.id}: {connection_file}")
+        return controller
+
       # Try to connect to existing kernel
-      controller.connection_file = connection_info["connection_file"]
+      controller.connection_file = connection_file
       controller.jupyter_kernel_id = connection_info.get("jupyter_kernel_id")
 
-      # Create kernel manager from connection file
-      controller.km = KernelManager(connection_file=connection_info["connection_file"])
+      # Create kernel manager from connection file with proper timeout
+      logger.debug(f"Creating KernelManager with connection file: {connection_file}")
+      controller.km = KernelManager(connection_file=connection_file)
 
-      # Check if kernel is alive
-      if not controller.km.is_alive():
-        logger.debug(f"Kernel {controller.id} is not alive, will be restarted")
+      # Check if kernel is alive with timeout
+      try:
+        is_alive = controller.km.is_alive()
+        if not is_alive:
+          logger.debug(f"Kernel {controller.id} is not alive according to KernelManager")
+          controller.km = None
+          return controller
+      except Exception as km_error:
+        logger.error(f"Error checking if kernel {controller.id} is alive: {km_error}")
         controller.km = None
         return controller
 
       # Create client
+      logger.debug(f"Creating client for kernel {controller.id}")
       controller.kc = controller.km.client()
-      controller.kc.start_channels()
 
-      # Wait briefly for kernel
+      # Start channels with proper error handling
       try:
-        controller.kc.wait_for_ready(timeout=5)
-        logger.debug(f"Successfully reconnected to kernel: {controller.id}")
+        controller.kc.start_channels()
+      except Exception as sc_error:
+        logger.error(f"Error starting channels for kernel {controller.id}: {sc_error}")
+        controller.kc = None
+        controller.km = None
         return controller
-      except:
-        logger.debug(f"Kernel {controller.id} not ready, will be restarted")
+
+      # Wait briefly for kernel with proper error handling
+      try:
+        logger.debug(f"Waiting for kernel {controller.id} to be ready")
+        controller.kc.wait_for_ready(timeout=5)
+        logger.info(f"Successfully reconnected to kernel: {controller.id}")
+        return controller
+      except Exception as wfr_error:
+        logger.error(f"Kernel {controller.id} not ready: {wfr_error}")
         controller.shutdown()
         controller.km = None
+        controller.kc = None
     except Exception as e:
       logger.error(f"Error reconnecting to kernel {controller.id}: {e}")
-      if controller.kc:
-        controller.kc.stop_channels()
-      if controller.km:
+      # Clean up resources on error
+      if hasattr(controller, 'kc') and controller.kc:
+        try:
+          controller.kc.stop_channels()
+        except:
+          pass
+        controller.kc = None
+
+      if hasattr(controller, 'km') and controller.km:
         controller.km = None
 
     return controller

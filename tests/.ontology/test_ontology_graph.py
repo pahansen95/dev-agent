@@ -73,17 +73,17 @@ def test_remove_subtree():
 
 def test_search_by_label_and_meta():
   g = OntologyGraph()
-  g.add_node(Node("n1", "QuickSort", meta={ "algo": "sort"}))
+  g.add_node(Node("n1", "QuickSort", meta={"algo": "sort"}))
   g.add_node(Node("n2", "Merge Sort"))
   hits = g.search("quick")
   assert hits == ["n1"]
   hits_meta = g.search("sort")
-  assert set(hits_meta) == { "n1", "n2"}
+  assert set(hits_meta) == {"n1", "n2"}
 
 def test_query_wildcards():
   g = make_basic_graph()
   all_edges = g.query()
-  assert len(all_edges) == 2  # root->A, A->B
+  assert len(all_edges) == 2 # root->A, A->B
   # wildcard src, filter by dst
   to_b = g.query(dst="B")
   assert to_b == [Edge("A", "decomposes_to", "B")]
@@ -100,7 +100,7 @@ def test_walk_dfs_and_bfs():
   assert dfs_order[0] == "root"
   # BFS visits root then its children level‑wise
   assert bfs_order[0] == "root"
-  assert set(dfs_order) == set(bfs_order) == { "root", "A", "B"}
+  assert set(dfs_order) == set(bfs_order) == {"root", "A", "B"}
 
 def test_to_paths():
   g = make_basic_graph()

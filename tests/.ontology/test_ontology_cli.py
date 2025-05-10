@@ -32,19 +32,17 @@ def _run_cli(tmp_dir: Path, *args: str, input_text: str = "") -> str:
     """
   cmd = [sys.executable, "-m", "Ontology", *args]
   proc = subprocess.run(
-      cmd,
-      input=input_text.encode(),
-      cwd=tmp_dir,
-      env=os.environ,
-      stdout=subprocess.PIPE,
-      stderr=subprocess.PIPE,
+    cmd,
+    input=input_text.encode(),
+    cwd=tmp_dir,
+    env=os.environ,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
   )
   if proc.returncode != 0:
-    raise AssertionError(
-        f"CLI failed ({proc.returncode}):\n"
-        f"STDOUT:\n{proc.stdout.decode()}\n"
-        f"STDERR:\n{proc.stderr.decode()}"
-    )
+    raise AssertionError(f"CLI failed ({proc.returncode}):\n"
+                         f"STDOUT:\n{proc.stdout.decode()}\n"
+                         f"STDERR:\n{proc.stderr.decode()}")
   return proc.stdout.decode()
 
 def test_cli_roundtrip(tmp_path: Path) -> None:
@@ -67,38 +65,38 @@ def test_cli_roundtrip(tmp_path: Path) -> None:
 
   # 3. add nodes
   _run_cli(
-      tmp_path,
-      "graph",
-      "add-node",
-      f"-f={graph_a.as_posix()}",
-      graph_b.as_posix(),
-      "root",
-      "Root",
-      "problem",
+    tmp_path,
+    "graph",
+    "add-node",
+    f"-f={graph_a.as_posix()}",
+    graph_b.as_posix(),
+    "root",
+    "Root",
+    "problem",
   )
   swap()
   _run_cli(
-      tmp_path,
-      "graph",
-      "add-node",
-      f"-f={graph_a.as_posix()}",
-      graph_b.as_posix(),
-      "child",
-      "Child",
-      "concept",
+    tmp_path,
+    "graph",
+    "add-node",
+    f"-f={graph_a.as_posix()}",
+    graph_b.as_posix(),
+    "child",
+    "Child",
+    "concept",
   )
   swap()
 
   # 4. add edge
   _run_cli(
-      tmp_path,
-      "graph",
-      "add-edge",
-      f"-f={graph_a.as_posix()}",
-      graph_b.as_posix(),
-      "root",
-      "decomposes_to",
-      "child",
+    tmp_path,
+    "graph",
+    "add-edge",
+    f"-f={graph_a.as_posix()}",
+    graph_b.as_posix(),
+    "root",
+    "decomposes_to",
+    "child",
   )
   swap()
 
@@ -109,5 +107,5 @@ def test_cli_roundtrip(tmp_path: Path) -> None:
   # 6. dump & validate
   dumped = _run_cli(tmp_path, "graph", "dump", f"-f={graph_a.as_posix()}", "-")
   data = json.loads(dumped)
-  assert {n["id"] for n in data["nodes"]} == { "root", "child"}
-  assert data["edges"] == [{ "src": "root", "rel": "decomposes_to", "dst": "child"}]
+  assert {n["id"] for n in data["nodes"]} == {"root", "child"}
+  assert data["edges"] == [{"src": "root", "rel": "decomposes_to", "dst": "child"}]

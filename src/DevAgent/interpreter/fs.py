@@ -191,7 +191,7 @@ def resolve_kernel_paths(base_dir: Path, kernel_id: str) -> tuple[Optional[Path]
   session_path = find_session_for_kernel(base_dir, kernel_id)
   if not session_path:
     return None, None
-  
+
   kernel_path = get_kernel_path(session_path, kernel_id)
   return session_path, kernel_path
 
@@ -209,12 +209,12 @@ def resolve_session_reference(base_dir: Path, reference: str) -> Optional[Path]:
   # If it's a session ID
   if reference.startswith("sid-"):
     return get_session_path(base_dir, reference)
-  
+
   # Otherwise it should be a symlink in by-name
   symlink_path = base_dir / "by-name" / reference
   if symlink_path.exists() and symlink_path.is_symlink():
     return symlink_path.resolve()
-  
+
   return None
 
 class FileLock:
