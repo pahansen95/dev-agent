@@ -1,150 +1,180 @@
 # Procedural Guide: How to Build a Conceptual Framework from Scratch
 
-**Purpose**  
-This guide provides a practical, step-by-step approach to constructing conceptual frameworks that clarify complex domains, guide inquiry, or inform design. It's aimed at researchers, designers, systems architects, and analysts who need a lightweight but rigorous scaffolding to structure their thinking and communicate it clearly.
+**Purpose**
+This guide offers a step-by-step approach for constructing conceptual frameworks that clarify complex domains, guide inquiry, or inform design. It balances rigor with flexibility, providing structure while encouraging adaptive thinking.
 
 ---
 
 ## Overview: The Six-Stage Process
 
-1. **Orient the Effort** – Define purpose, stakeholders, and scope.  
-2. **Elicit & Cluster Key Concepts** – Identify and organize candidate ideas.  
-3. **Define Boundaries & Assumptions** – Draw the limits and call out what you’re treating as true.  
-4. **Draft Relationships** – Map how the concepts influence or depend on each other.  
-5. **Create the Representation** – Formalize as a diagram and a written explanation.  
-6. **Validate & Iterate** – Test the framework, revise, and finalize.
+1. **Orient the Effort** – Define purpose, stakeholders, and scope.
+2. **Elicit & Cluster Key Concepts** – Identify, structure, and prioritize ideas.
+3. **Define Boundaries & Assumptions** – Draw scope limits and call out working assumptions.
+4. **Draft Relationships** – Map how the concepts influence or depend on each other.
+5. **Create the Representation** – Formalize into a diagram and written explanation.
+6. **Validate & Iterate** – Test, refine, and version the framework.
 
-Each stage includes a **goal**, **inputs**, **actions**, and **outputs** to keep teams aligned and moving.
+> ⚠ Framework development is *non-linear*. Expect to loop back and revise earlier stages.
 
 ---
 
 ## Stage 1: Orient the Effort
 
-**Goal:** Align on *why* the framework is needed and *who it’s for*.
+**Goal:** Establish the framework's intent, target users, and initial boundaries.
 
 **Inputs:**
-- Project context or problem domain
-- Known stakeholders or decision-makers
+
+* Problem domain or project context
+* Stakeholders and intended users
 
 **Actions:**
-- Define the purpose: What decisions or actions will this framework support?
-- Identify key stakeholders: Who must understand or believe in this?
-- Establish time and scope constraints: What’s the timebox for this iteration?
+
+* Define what decision, communication, or investigation the framework will support.
+* Identify who will use or be affected by it.
+* Estimate its complexity: simple, nested, or layered.
+* Set a timebox for this iteration.
 
 **Outputs:**
-- 1-paragraph purpose statement
-- Stakeholder list
-- Working scope notes
+
+* 1-paragraph purpose statement
+* Stakeholder list
+* Draft scope notes
 
 ---
 
 ## Stage 2: Elicit & Cluster Key Concepts
 
-**Goal:** Surface and organize the most important concepts in the domain.
+**Goal:** Surface and organize the most important concepts.
 
 **Inputs:**
-- Team knowledge
-- Stakeholder interviews or domain literature
+
+* Team knowledge, literature, interviews, field data
 
 **Actions:**
-- Brainstorm relevant entities, states, events, roles, or factors.
-- Affinity-cluster similar concepts.
-- Reduce to the essential set (~5–7 core items).
+
+* Brainstorm all relevant concepts (entities, processes, roles, conditions).
+* Cluster into *three* meaningful groups (affinity mapping).
+* Reduce each cluster into *three* core concepts (total of 9).
 
 **Outputs:**
-- Shortlist of core concepts (with labels)
-- Optional: raw brainstorm artifact (photo, screenshot)
+
+* Brief overview of each cluster.
+* Shortlist of core concepts grouped by cluster.
 
 ---
 
 ## Stage 3: Define Boundaries & Assumptions
 
-**Goal:** Clearly state what is inside vs. outside the framework, and what assumptions it rests on.
+**Goal:** Clarify what is in/out of scope and what you're assuming.
 
 **Inputs:**
-- Shortlist of concepts
-- Project constraints
+
+* Clustered concept set
+* Stakeholder priorities
 
 **Actions:**
-- Identify excluded topics or scopes (“we are not modeling deployment concerns…”).
-- Write down current assumptions—anything you’re not yet ready to prove.
-- Define key terms or contested vocabulary.
+
+* Define what's explicitly *out of bounds*.
+* Document assumptions: known unknowns, placeholders, or theory commitments.
+* Create draft glossary definitions for each core term.
+* Tag assumptions with validation status (`Planned`, `In-Progress`, `Validated`).
 
 **Outputs:**
-- Scope boundary statement (bullet form or paragraph)
-- Assumption list
-- Draft glossary
+
+* Boundary statement
+* Assumption list
+* Draft glossary
 
 ---
 
 ## Stage 4: Draft Relationships
 
-**Goal:** Clarify how the concepts interact, influence, or depend on each other.
+**Goal:** Make explicit how the concepts relate to each other.
 
 **Inputs:**
-- Core concepts
-- Assumptions and constraints
+
+* Core concepts or clusters
+* Assumptions and definitions
 
 **Actions:**
-- Draw initial arrows between concepts; label with verbs (“enables,” “inhibits,” “transforms”).
-- For each relationship, ask: is it directional? causal? conditional?
-- Annotate unclear or speculative links for later review.
+
+* Brainstorm how clusters relate & influence each other; delve into obvious concept to concept relationships.
+* Create a **Relationship Matrix** for both clusters & concepts.
+  * Rows and columns list clusters/concepts.
+  * Cells describe the relationship from row cluster/concept -> column cluster/concept.
+  * Exhaustively describe all relationships between clusters/concepts; explicitly mark where no relationships exist, skip the main diagonal.
 
 **Outputs:**
-- Preliminary concept map (hand-drawn or digital)
-- Annotated relationship notes
+
+* Relationship Matrices:
+  * Concept to Concept 
+  * Cluster to Cluster
+
+* Simple relationship overview as a visual diagram 
 
 ---
 
 ## Stage 5: Create the Representation
 
-**Goal:** Build a shareable, coherent version of the framework.
+**Goal:** Build a readable, communicable version of the framework.
 
 **Inputs:**
-- Draft concept map
-- Rationale for relationships
+
+* Relationships, definitions, rationale
 
 **Actions:**
-- Refine the diagram (e.g., using Lucidchart, draw.io, Mermaid).
-- Write a short narrative walkthrough (≤2 pages).
-- Tag the version (e.g., `CF-v0.3-2025-05-10`).
+
+* Produce a clean diagram for overview purposes.
+* Keep the diagram high-level; offload density to matrices.
+* Write a narrative walkthrough (≤2 pages).
+* Version and timestamp the release (e.g., `v0.3-2025-05-10`).
 
 **Outputs:**
-- Finalized diagram (image or diagram source)
-- Written explanation (PDF, Notion doc, etc.)
-- Version metadata
+
+* Framework diagram (image or embedded source)
+* Accompanying narrative explanation
+* Version metadata
 
 ---
 
 ## Stage 6: Validate & Iterate
 
-**Goal:** Test whether the framework makes sense, holds up, and adds value.
+**Goal:** Improve framework quality through internal and external feedback.
 
 **Inputs:**
-- Diagram + narrative
-- Stakeholder feedback
+
+* Representation + rationale
+* Review criteria
 
 **Actions:**
-- Share with 2–3 reviewers (ideally both novices and domain experts).
-- Gather confusion points, disagreements, or missing concepts.
-- Iterate—adjust concepts, assumptions, or links.
-- Repeat until "good enough for purpose" or time runs out.
+**6A: Validation Planning**
+
+* Define what success looks like (e.g., usability, testability, clarity).
+* Identify reviewers (internal team, peers, stakeholders).
+* Choose methods (walkthroughs, use-case testing, surveys).
+
+**6B: Execution & Iteration**
+
+* Run the review sessions.
+* Log feedback, ambiguities, and defects.
+* Update assumptions and relationships accordingly.
 
 **Outputs:**
-- Reviewer feedback log
-- Revised version(s)
-- Final version or release notes
+
+* Feedback log
+* Revised versions and change notes
+* Final or release candidate version
 
 ---
 
 ## Final Quality Checklist
 
-Before publishing or applying your framework:
-
-- [ ] Does each concept have a clear, shared definition?
-- [ ] Are all relationships labeled and justifiable?
-- [ ] Have you scoped and stated what’s out of bounds?
-- [ ] Can someone unfamiliar with the domain walk through the narrative and get it?
-- [ ] Is it versioned and ready for reuse or critique?
+* [ ] Each concept has a clear, shared definition.
+* [ ] Scope boundaries and assumptions are explicit.
+* [ ] Diagram + narrative are clear and self-contained.
+* [ ] Validation plan exists, even if execution is deferred.
+* [ ] Version and rationale are logged.
 
 ---
+
+**Note:** Frameworks are living artifacts. Each version should make the underlying thinking more coherent, testable, and communicable. Treat this guide not as a prescription, but as a scaffold for deliberate design.
