@@ -1,13 +1,11 @@
-### Development ###
+### Project Management ###
 
-wireup ~= 1.0 # Dependency Injection Framework
-pluggy ~= 1.5 # Plugin Framework
-pydantic ~= 2.11 # Data Modeling
-
-### Interfaces ###
-
-typer ~= 0.15 # CLI Builder
-fastapi ~= 0.115 # HTTP API
+# uv ~= 0.7 # Python Project Management; Pre-req
+mypy ~= 1.15 # Static Type Analysis
+ruff ~= 0.11 # Style & Linter
+pytest ~= 8.3 # Testing Framework
+  pytest-asyncio ~= 0.26 # Asyncio Plugin for pytest
+pre-commit ~= 4.2 # pre-commit hook framework
 
 ### Some Helpful Imports ###
 
