@@ -1,5 +1,6 @@
 ### Project Management ###
 
+# pyenv # Not a Python Package: https://github.com/pyenv/pyenv
 # uv ~= 0.7 # Python Project Management; Pre-req
 mypy ~= 1.15 # Static Type Analysis
 ruff ~= 0.11 # Style & Linter
