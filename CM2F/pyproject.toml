@@ -1,0 +1,7 @@
+[project]
+name = "CM2F"
+version = "0.1.0"
+description = "Computational Mental Models"
+readme = "README.md"
+requires-python = ">=3.13.3"
+dependencies = []
