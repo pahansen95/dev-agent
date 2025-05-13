@@ -1,6 +1,7 @@
 # Computational Mental Models Framework Development Process
 
-**Version: 0.2 | Date: 2025-05-12**
+> **Last Updated**: 2025-05-13
+> **Framework Version**: CM²F-v0.2
 
 ## Executive Overview
 
@@ -238,9 +239,7 @@ Established semantic versioning: CM²F-v0.2-2025-05-12
 - Cross-cutting support identification
 - Measurement point marking
 
-## Pending Work
-
-### Stage 6: Operationalization
+## Stage 6: Operationalize the Framework
 
 **Required Deliverables**:
 1. Procedural guides for each concept
@@ -249,6 +248,69 @@ Established semantic versioning: CM²F-v0.2-2025-05-12
 4. Input/output specifications
 
 **Approach**: Define concrete procedures transforming inputs to outputs for each concept.
+
+### Procedural Guides
+
+Each of the nine framework concepts requires operational procedures defining inputs, transformation steps, and outputs.
+
+**Domain Ontology Operationalization**
+
+*Formal Articulation Procedure*: Transforms unstructured mental models into verified formal specifications using Alloy or TLA+ languages. The process captures initial concepts in structured documentation, creates formal specifications through iterative refinement, and validates using model checkers. Produces .als or .tla specification files within 30-60 minutes.
+
+*Hierarchical System Decomposition Procedure*: Analyzes formal specifications to extract system aspects, identify architectural layers, and define component boundaries. Creates interface specifications and dependency mappings using PlantUML and Protocol definitions. Generates component architecture diagrams and interface contracts within 15-30 minutes.
+
+*Queryable Knowledge Base Procedure*: Structures accumulated patterns and specifications for efficient search and retrieval. Uses YAML for pattern storage, Whoosh for indexing, and NetworkX for relationship analysis. Continuously builds searchable pattern libraries supporting cross-project learning.
+
+**Computational Constraints Operationalization**
+
+*Pragmatic Programming Procedure*: Establishes coding standards through linting configurations, pre-commit hooks, and IDE settings. Configures Ruff, mypy, and Import-Linter to enforce architectural constraints automatically. Initial setup completes within 20 minutes.
+
+*Architectural Boundary Layer Procedure*: Defines transformation rules mapping specifications to implementation patterns. Creates template mappings, type conversions, and boundary validators using Jinja2, LibCST, and Python Protocols. Requires 1-2 hours for comprehensive boundary definition.
+
+*Code Generation Conformance Procedure*: Orchestrates template selection, constraint application, and validation during code generation. Employs Jinja2 for templating, LibCST for code manipulation, and Black for formatting. Generates compliant code modules within 5-10 minutes each.
+
+**Verification & Alignment Operationalization**
+
+*Observation & Measurement Procedure*: Extracts behavioral properties from specifications and generates comprehensive test suites. Uses Hypothesis for property-based testing, pytest for execution, and sys.monitoring for runtime observation. Verification setup requires 20-30 minutes.
+
+*Code Smell Procedure*: Analyzes implementation quality through static analysis, complexity metrics, and anti-pattern detection. Employs Vulture, Radon, and Ruff to generate actionable improvement recommendations. Analysis completes within 15 minutes.
+
+*Marginal Analysis Procedure*: Quantifies gaps between specifications and implementations through functional completeness, coverage analysis, and refinement prioritization. Synthesizes metrics from all framework stages to guide iterative improvement. Requires 15-30 minutes per iteration.
+
+### Design Kit Components
+
+**Pre-existing Solutions**: Alloy specification templates, TLA+ behavior patterns, service architecture templates, and repository patterns organized hierarchically for easy access.
+
+**Tools and Utilities**: Framework CLI (`cm2f-cli`), IDE extensions for specification languages, generation pipeline scripts, and verification automation tools supporting end-to-end workflows.
+
+**Template Library Structure**:
+```
+templates/
+├── specifications/     # Formal model templates
+├── architecture/      # Decomposition patterns
+└── implementation/    # Code generation templates
+```
+
+### Implementation Resources
+
+**Tool Chain Configuration**: Defines required tools including Alloy Analyzer 6.0, Python 3.12+, Jinja2, LibCST, Hypothesis, and supporting utilities. Specifies version requirements and integration points.
+
+**Automation Scripts**: Provides executable workflows orchestrating specification validation, code generation, verification execution, and refinement analysis through standardized pipelines.
+
+**Development Environment**: Containerized setup ensuring consistent tool availability, dependency management, and reproducible execution across different development contexts.
+
+### Success Metrics
+
+Framework operationalization succeeds when:
+- All nine concepts have executable procedures
+- Tool chain supports complete workflows
+- Templates cover common scenarios
+- Automation reduces manual effort by 70%+
+- New practitioners complete projects within 4 hours
+
+This operationalization transforms theoretical framework concepts into practical, repeatable procedures enabling rapid software development from mental models.
+
+## Pending Work
 
 ### Stage 7: Pilot, Validate & Refine
 
@@ -290,7 +352,3 @@ This process summary serves as the authoritative record for framework developmen
 - Stakeholder feedback
 - Implementation results
 - Version control tracking
-
-**Last Updated**: 2025-05-12
-**Document Version**: 1.0
-**Framework Version**: CM²F-v0.2
