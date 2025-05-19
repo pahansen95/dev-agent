@@ -120,39 +120,12 @@ The architecture follows a layered approach with clear component boundaries:
 __version__ = "0.1.0"
 
 # Import main modules for easier access
-from .source import (
-    Document,
-    Node,
-    Tree,
-    MarkdownParser
-)
+from .source import (Document, Node, Tree, MarkdownParser)
 
-from .artifact import (
-    PromptTemplate,
-    TemplateManager,
-    GuidanceManager,
-    ContentGenerator,
-    Patch,
-    VersionManager
-)
+from .artifact import (PromptTemplate, TemplateManager, GuidanceManager, ContentGenerator, Patch, VersionManager)
 
 # Import core components
-from ._core import (
-    ConfigurationError,
-    TemplateError,
-    GuidanceError,
-    ContentGenerationError,
-    ParsingError,
-    Version,
-    Change,
-    GuidanceParameters
-)
+from ._core import (ConfigurationError, TemplateError, GuidanceError, ContentGenerationError, ParsingError, Version, Change, GuidanceParameters)
 
 # Import utility components
-from ._utils import (
-    FileSystem,
-    DiffManager,
-    LLMService,
-    AzureOpenAIService,
-    MockLLMService
-)
+from ._utils import (FileSystem, DiffManager, LLMService, AzureOpenAIService, MockLLMService)
