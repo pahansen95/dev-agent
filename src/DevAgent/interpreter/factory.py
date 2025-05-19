@@ -12,11 +12,7 @@ from .application.app_service import InterpreterApplicationService
 from .infrastructure.event_bus import EventBus
 from .infrastructure.fs_event_bus import FileSystemEventBus
 from .infrastructure.fs_manager import FileSystemManager
-from .infrastructure.repositories import (
-    FileSystemSessionRepository, 
-    FileSystemKernelRepository,
-    FileSystemRuntimeStateRepository
-)
+from .infrastructure.repositories import (FileSystemSessionRepository, FileSystemKernelRepository, FileSystemRuntimeStateRepository)
 from .infrastructure.kernel_adapter import KernelControllerAdapter
 from .infrastructure.kernel_operator import KernelOperator
 from .domain.services import ReferenceResolutionService, KernelLifecycleService, ExecutionService
@@ -70,10 +66,7 @@ def create_interpreter(base_dir: pathlib.Path) -> InterpreterFacade:
   # Create and return facade
   return InterpreterFacade(app_service)
 
-def create_event_driven_interpreter(
-    base_dir: pathlib.Path, 
-    consumer_id: Optional[str] = None
-) -> EventDrivenInterpreterFacade:
+def create_event_driven_interpreter(base_dir: pathlib.Path, consumer_id: Optional[str] = None) -> EventDrivenInterpreterFacade:
   """
   Create an event-driven interpreter facade with all dependencies configured.
   
@@ -89,6 +82,6 @@ def create_event_driven_interpreter(
   # Generate consumer ID if not provided
   if not consumer_id:
     consumer_id = f"cli-{uuid.uuid4().hex[:8]}"
-  
+
   # Create and return the event-driven facade
   return EventDrivenInterpreterFacade(base_dir, consumer_id)

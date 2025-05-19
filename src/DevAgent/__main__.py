@@ -16,10 +16,7 @@ from collections import deque
 
 from DevAgent.api import OntologyAPI
 from DevAgent.interpreter.factory import create_interpreter, create_event_driven_interpreter
-from DevAgent.interpreter.application.event_driven_cli_handlers import (
-    EventDrivenSessionCommandHandler,
-    EventDrivenKernelCommandHandler
-)
+from DevAgent.interpreter.application.event_driven_cli_handlers import (EventDrivenSessionCommandHandler, EventDrivenKernelCommandHandler)
 
 SCRIPT = pathlib.Path(__file__)
 CONTEXT = SCRIPT.parent # The context of Script
@@ -128,241 +125,241 @@ def handle_ontology_add_edge(args: argparse.Namespace) -> bool:
 def handle_interpreter_session_create(args: argparse.Namespace) -> bool:
   """Create a new interpreter session."""
   base_dir_path = pathlib.Path(args.dir)
-  
+
   # Create event-driven interpreter facade
   interpreter = create_event_driven_interpreter(base_dir_path)
-  
+
   # Create session command handler
   session_handler = EventDrivenSessionCommandHandler(interpreter)
-  
+
   # Call the handler and get result
   result = session_handler.handle_create(args.name)
-  
+
   # Shutdown the interpreter facade
   interpreter.shutdown()
-  
+
   return result
 
 def handle_interpreter_session_list(args: argparse.Namespace) -> bool:
   """List all interpreter sessions."""
   base_dir_path = pathlib.Path(args.dir)
-  
+
   # Create event-driven interpreter facade
   interpreter = create_event_driven_interpreter(base_dir_path)
-  
+
   # Create session command handler
   session_handler = EventDrivenSessionCommandHandler(interpreter)
-  
+
   # Call the handler and get result
   result = session_handler.handle_list()
-  
+
   # Shutdown the interpreter facade
   interpreter.shutdown()
-  
+
   return result
 
 def handle_interpreter_session_delete(args: argparse.Namespace) -> bool:
   """Delete an interpreter session."""
   base_dir_path = pathlib.Path(args.dir)
-  
+
   # Create event-driven interpreter facade
   interpreter = create_event_driven_interpreter(base_dir_path)
-  
+
   # Create session command handler
   session_handler = EventDrivenSessionCommandHandler(interpreter)
-  
+
   # Call the handler and get result
   result = session_handler.handle_delete(args.session)
-  
+
   # Shutdown the interpreter facade
   interpreter.shutdown()
-  
+
   return result
 
 def handle_interpreter_session_execute(args: argparse.Namespace) -> bool:
   """Execute code in a session."""
   base_dir_path = pathlib.Path(args.dir)
-  
+
   # Construct kernel reference
   kernel_ref = f"{args.session}/{args.kernel}"
-  
+
   # Create event-driven interpreter facade
   interpreter = create_event_driven_interpreter(base_dir_path)
-  
+
   # Create kernel command handler
   kernel_handler = EventDrivenKernelCommandHandler(interpreter)
-  
+
   # Call the handler and get result
   result = kernel_handler.handle_execute(kernel_ref, args.code)
-  
+
   # Shutdown the interpreter facade
   interpreter.shutdown()
-  
+
   return result
 
 def handle_interpreter_kernel_create(args: argparse.Namespace) -> bool:
   """Create a new kernel in a session."""
   base_dir_path = pathlib.Path(args.dir)
-  
+
   # Create event-driven interpreter facade
   interpreter = create_event_driven_interpreter(base_dir_path)
-  
+
   # Create kernel command handler
   kernel_handler = EventDrivenKernelCommandHandler(interpreter)
-  
+
   # Call the handler and get result
   result = kernel_handler.handle_create(args.session, args.name, args.type)
-  
+
   # Shutdown the interpreter facade
   interpreter.shutdown()
-  
+
   return result
 
 def handle_interpreter_kernel_list(args: argparse.Namespace) -> bool:
   """List kernels in a session."""
   base_dir_path = pathlib.Path(args.dir)
-  
+
   # Create event-driven interpreter facade
   interpreter = create_event_driven_interpreter(base_dir_path)
-  
+
   # Create kernel command handler
   kernel_handler = EventDrivenKernelCommandHandler(interpreter)
-  
+
   # Call the handler and get result
   result = kernel_handler.handle_list(args.session)
-  
+
   # Shutdown the interpreter facade
   interpreter.shutdown()
-  
+
   return result
 
 def handle_interpreter_kernel_execute(args: argparse.Namespace) -> bool:
   """Execute code in a kernel."""
   base_dir_path = pathlib.Path(args.dir)
-  
+
   # Create event-driven interpreter facade
   interpreter = create_event_driven_interpreter(base_dir_path)
-  
+
   # Create kernel command handler
   kernel_handler = EventDrivenKernelCommandHandler(interpreter)
-  
+
   # Call the handler
   if args.file:
     result = kernel_handler.handle_execute(args.ref, "", args.file)
   else:
     result = kernel_handler.handle_execute(args.ref, args.code)
-  
+
   # Shutdown the interpreter facade
   interpreter.shutdown()
-  
+
   return result
 
 def handle_interpreter_kernel_restart(args: argparse.Namespace) -> bool:
   """Restart a kernel."""
   base_dir_path = pathlib.Path(args.dir)
-  
+
   # Create event-driven interpreter facade
   interpreter = create_event_driven_interpreter(base_dir_path)
-  
+
   # Create kernel command handler
   kernel_handler = EventDrivenKernelCommandHandler(interpreter)
-  
+
   # Call the handler and get result
   result = kernel_handler.handle_restart(args.ref)
-  
+
   # Shutdown the interpreter facade
   interpreter.shutdown()
-  
+
   return result
 
 def handle_interpreter_kernel_interrupt(args: argparse.Namespace) -> bool:
   """Interrupt a kernel."""
   base_dir_path = pathlib.Path(args.dir)
-  
+
   # Create event-driven interpreter facade
   interpreter = create_event_driven_interpreter(base_dir_path)
-  
+
   # Create kernel command handler
   kernel_handler = EventDrivenKernelCommandHandler(interpreter)
-  
+
   # Call the handler and get result
   result = kernel_handler.handle_interrupt(args.ref)
-  
+
   # Shutdown the interpreter facade
   interpreter.shutdown()
-  
+
   return result
 
 def handle_interpreter_kernel_delete(args: argparse.Namespace) -> bool:
   """Delete a kernel."""
   base_dir_path = pathlib.Path(args.dir)
-  
+
   # Create event-driven interpreter facade
   interpreter = create_event_driven_interpreter(base_dir_path)
-  
+
   # Create kernel command handler
   kernel_handler = EventDrivenKernelCommandHandler(interpreter)
-  
+
   # Call the handler and get result
   result = kernel_handler.handle_delete(args.ref)
-  
+
   # Shutdown the interpreter facade
   interpreter.shutdown()
-  
+
   return result
 
 def handle_interpreter_kernel_status(args: argparse.Namespace) -> bool:
   """Get status of a kernel."""
   base_dir_path = pathlib.Path(args.dir)
-  
+
   # Create event-driven interpreter facade
   interpreter = create_event_driven_interpreter(base_dir_path)
-  
+
   # Create kernel command handler
   kernel_handler = EventDrivenKernelCommandHandler(interpreter)
-  
+
   # Call the handler and get result
   result = kernel_handler.handle_status(args.ref)
-  
+
   # Shutdown the interpreter facade
   interpreter.shutdown()
-  
+
   return result
 
 def handle_interpreter_kernel_start(args: argparse.Namespace) -> bool:
   """Start a kernel."""
   base_dir_path = pathlib.Path(args.dir)
-  
+
   # Create event-driven interpreter facade
   interpreter = create_event_driven_interpreter(base_dir_path)
-  
+
   # Create kernel command handler
   kernel_handler = EventDrivenKernelCommandHandler(interpreter)
-  
+
   # Call the handler and get result
   result = kernel_handler.handle_start(args.ref)
-  
+
   # Shutdown the interpreter facade
   interpreter.shutdown()
-  
+
   return result
 
 def handle_interpreter_kernel_stop(args: argparse.Namespace) -> bool:
   """Stop a kernel."""
   base_dir_path = pathlib.Path(args.dir)
-  
+
   # Create event-driven interpreter facade
   interpreter = create_event_driven_interpreter(base_dir_path)
-  
+
   # Create kernel command handler
   kernel_handler = EventDrivenKernelCommandHandler(interpreter)
-  
+
   # Call the handler and get result
   result = kernel_handler.handle_stop(args.ref)
-  
+
   # Shutdown the interpreter facade
   interpreter.shutdown()
-  
+
   return result
 
 def setup_argument_parser() -> argparse.ArgumentParser:
@@ -483,17 +480,17 @@ def setup_argument_parser() -> argparse.ArgumentParser:
   kernel_delete_parser = kernel_subparsers.add_parser("delete", help="Delete a kernel")
   kernel_delete_parser.add_argument("--ref", required=True, help="Kernel reference")
   kernel_delete_parser.set_defaults(func=handle_interpreter_kernel_delete)
-  
+
   # Kernel status
   kernel_status_parser = kernel_subparsers.add_parser("status", help="Get status of a kernel")
   kernel_status_parser.add_argument("--ref", required=True, help="Kernel reference")
   kernel_status_parser.set_defaults(func=handle_interpreter_kernel_status)
-  
+
   # Kernel start
   kernel_start_parser = kernel_subparsers.add_parser("start", help="Start a kernel")
   kernel_start_parser.add_argument("--ref", required=True, help="Kernel reference")
   kernel_start_parser.set_defaults(func=handle_interpreter_kernel_start)
-  
+
   # Kernel stop
   kernel_stop_parser = kernel_subparsers.add_parser("stop", help="Stop a kernel")
   kernel_stop_parser.add_argument("--ref", required=True, help="Kernel reference")

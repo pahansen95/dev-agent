@@ -13,4 +13,4 @@ from unit.interpreter.application.test_app_service import *
 from integration.interpreter.test_integration import *
 
 if __name__ == "__main__":
-    unittest.main()
+  unittest.main()

@@ -60,29 +60,29 @@ class KernelControllerAdapter:
     runtime_state = runtime_repo.find_by_kernel_id(kernel.id)
 
     if runtime_state and runtime_state.connection_file:
-        logger.info(f"Attempting to reconnect to kernel {kernel_id} using connection file")
-        try:
-            # Try to reconnect using the controller's from_connection_info method
-            connection_info = {
-                "kernel_id": kernel_id,
-                "name": kernel.name,
-                "kernel_type": kernel.kernel_type,
-                "session_id": str(kernel.session_id),
-                "jupyter_kernel_id": runtime_state.jupyter_kernel_id,
-                "connection_file": runtime_state.connection_file
-            }
+      logger.info(f"Attempting to reconnect to kernel {kernel_id} using connection file")
+      try:
+        # Try to reconnect using the controller's from_connection_info method
+        connection_info = {
+          "kernel_id": kernel_id,
+          "name": kernel.name,
+          "kernel_type": kernel.kernel_type,
+          "session_id": str(kernel.session_id),
+          "jupyter_kernel_id": runtime_state.jupyter_kernel_id,
+          "connection_file": runtime_state.connection_file
+        }
 
-            controller = LegacyKernelController.from_connection_info(connection_info, workspace_dir)
+        controller = LegacyKernelController.from_connection_info(connection_info, workspace_dir)
 
-            # If reconnection was successful, save it in our cache
-            if controller and controller.is_alive():
-                logger.info(f"Successfully reconnected to kernel: {controller.id}")
-                self._controllers[kernel_id] = controller
-                return controller
-            else:
-                logger.warning(f"Reconnection to kernel {kernel_id} failed, will create new controller")
-        except Exception as e:
-            logger.error(f"Error reconnecting to kernel {kernel_id}: {e}")
+        # If reconnection was successful, save it in our cache
+        if controller and controller.is_alive():
+          logger.info(f"Successfully reconnected to kernel: {controller.id}")
+          self._controllers[kernel_id] = controller
+          return controller
+        else:
+          logger.warning(f"Reconnection to kernel {kernel_id} failed, will create new controller")
+      except Exception as e:
+        logger.error(f"Error reconnecting to kernel {kernel_id}: {e}")
 
     # Create new controller
     logger.info(f"Creating new controller for kernel {kernel_id}")
@@ -195,107 +195,86 @@ class KernelControllerAdapter:
 
     # Check if we have a controller and if it's alive
     if str(kernel.id) in self._controllers:
-        controller = self._controllers[str(kernel.id)]
-        if not controller.is_alive() and runtime_state and runtime_state.connection_file:
-            # Controller exists but is not alive, remove it so we can reconnect properly
-            logger.info(f"Cached controller for kernel {kernel.id} is not alive, will reconnect")
-            del self._controllers[str(kernel.id)]
-            controller = None
+      controller = self._controllers[str(kernel.id)]
+      if not controller.is_alive() and runtime_state and runtime_state.connection_file:
+        # Controller exists but is not alive, remove it so we can reconnect properly
+        logger.info(f"Cached controller for kernel {kernel.id} is not alive, will reconnect")
+        del self._controllers[str(kernel.id)]
+        controller = None
 
     # If no controller exists or it was removed because it wasn't alive, try to reconnect
     if controller is None and runtime_state and runtime_state.connection_file:
-        logger.info(f"Attempting to reconnect to kernel {kernel.id} using connection file: {runtime_state.connection_file}")
-        try:
-            # Try to reconnect using the new controller's from_connection_info method
-            connection_info = {
-                "kernel_id": str(kernel.id),
-                "name": kernel.name,
-                "kernel_type": kernel.kernel_type,
-                "session_id": str(kernel.session_id),
-                "jupyter_kernel_id": runtime_state.jupyter_kernel_id,
-                "connection_file": runtime_state.connection_file
-            }
+      logger.info(f"Attempting to reconnect to kernel {kernel.id} using connection file: {runtime_state.connection_file}")
+      try:
+        # Try to reconnect using the new controller's from_connection_info method
+        connection_info = {
+          "kernel_id": str(kernel.id),
+          "name": kernel.name,
+          "kernel_type": kernel.kernel_type,
+          "session_id": str(kernel.session_id),
+          "jupyter_kernel_id": runtime_state.jupyter_kernel_id,
+          "connection_file": runtime_state.connection_file
+        }
 
-            controller = LegacyKernelController.from_connection_info(connection_info, workspace_dir)
+        controller = LegacyKernelController.from_connection_info(connection_info, workspace_dir)
 
-            # If reconnection was successful, save it in our cache
-            if controller and controller.is_alive():
-                logger.info(f"Successfully reconnected to kernel: {controller.id}")
-                self._controllers[str(kernel.id)] = controller
-            else:
-                logger.warning(f"Reconnection to kernel {kernel.id} returned controller but kernel is not alive")
-                controller = None
-        except Exception as e:
-            logger.error(f"Error reconnecting to kernel {kernel.id}: {e}")
-            controller = None
+        # If reconnection was successful, save it in our cache
+        if controller and controller.is_alive():
+          logger.info(f"Successfully reconnected to kernel: {controller.id}")
+          self._controllers[str(kernel.id)] = controller
+        else:
+          logger.warning(f"Reconnection to kernel {kernel.id} returned controller but kernel is not alive")
+          controller = None
+      except Exception as e:
+        logger.error(f"Error reconnecting to kernel {kernel.id}: {e}")
+        controller = None
 
     # If we still don't have a controller or it's not alive, create a new one
     if controller is None or not controller.is_alive():
-        logger.info(f"Creating new controller for kernel {kernel.id}")
-        controller = LegacyKernelController(
-          id=str(kernel.id),
-          name=kernel.name,
-          kernel_type=kernel.kernel_type,
-          session_id=str(kernel.session_id),
-          workspace_dir=workspace_dir)
+      logger.info(f"Creating new controller for kernel {kernel.id}")
+      controller = LegacyKernelController(
+        id=str(kernel.id), name=kernel.name, kernel_type=kernel.kernel_type, session_id=str(kernel.session_id), workspace_dir=workspace_dir)
 
-        # Try to start the kernel
-        logger.info(f"Attempting to start kernel {kernel.id}")
-        if controller.start_kernel():
-            logger.info(f"Successfully started kernel {controller.id}")
-            self._controllers[str(kernel.id)] = controller
+      # Try to start the kernel
+      logger.info(f"Attempting to start kernel {kernel.id}")
+      if controller.start_kernel():
+        logger.info(f"Successfully started kernel {controller.id}")
+        self._controllers[str(kernel.id)] = controller
 
-            # Update runtime state with new connection info if we have a runtime repo
-            if runtime_state:
-                runtime_state.connection_file = controller.connection_file
-                runtime_state.jupyter_kernel_id = controller.jupyter_kernel_id
-                runtime_state.process_id = None  # Will be updated by the process observer
-                runtime_repo.save(runtime_state)
-        else:
-            logger.error(f"Failed to start kernel {kernel.id}")
-            return ExecutionResult(
-                success=False,
-                error=f"Failed to start or connect to kernel {kernel.id}",
-                stdout="",
-                outputs=[],
-                execution_time=0.0
-            )
+        # Update runtime state with new connection info if we have a runtime repo
+        if runtime_state:
+          runtime_state.connection_file = controller.connection_file
+          runtime_state.jupyter_kernel_id = controller.jupyter_kernel_id
+          runtime_state.process_id = None # Will be updated by the process observer
+          runtime_repo.save(runtime_state)
+      else:
+        logger.error(f"Failed to start kernel {kernel.id}")
+        return ExecutionResult(success=False, error=f"Failed to start or connect to kernel {kernel.id}", stdout="", outputs=[], execution_time=0.0)
 
     # Execute using controller
     try:
-        # Double check that controller is alive before executing
-        if not controller.is_alive():
-            return ExecutionResult(
-                success=False,
-                error=f"Kernel {kernel.id} is not alive even after reconnection/restart attempts",
-                stdout="",
-                outputs=[],
-                execution_time=0.0
-            )
-
-        legacy_result = controller.execute(code)
-
-        # Map to domain ExecutionResult
-        result = ExecutionResult(
-            success=legacy_result.success,
-            stdout=legacy_result.stdout,
-            error=legacy_result.error,
-            outputs=legacy_result.outputs,
-            execution_time=legacy_result.execution_time)
-
-        # Update kernel state
-        kernel.update_last_activity()
-
-        return result
-    except Exception as e:
-        logger.error(f"Error executing code in kernel {controller.id}: {e}")
+      # Double check that controller is alive before executing
+      if not controller.is_alive():
         return ExecutionResult(
-            success=False,
-            error=str(e),
-            stdout="",
-            outputs=[],
-            execution_time=0.0
-        )
+          success=False, error=f"Kernel {kernel.id} is not alive even after reconnection/restart attempts", stdout="", outputs=[], execution_time=0.0)
+
+      legacy_result = controller.execute(code)
+
+      # Map to domain ExecutionResult
+      result = ExecutionResult(
+        success=legacy_result.success,
+        stdout=legacy_result.stdout,
+        error=legacy_result.error,
+        outputs=legacy_result.outputs,
+        execution_time=legacy_result.execution_time)
+
+      # Update kernel state
+      kernel.update_last_activity()
+
+      return result
+    except Exception as e:
+      logger.error(f"Error executing code in kernel {controller.id}: {e}")
+      return ExecutionResult(success=False, error=str(e), stdout="", outputs=[], execution_time=0.0)
 
   def interrupt_kernel(self, kernel: Kernel, workspace_dir: Path) -> bool:
     """
@@ -315,16 +294,16 @@ class KernelControllerAdapter:
 
     # Check if kernel is alive
     if not controller.is_alive():
-        logger.warning(f"Cannot interrupt kernel {kernel.id}: not alive")
-        return False
+      logger.warning(f"Cannot interrupt kernel {kernel.id}: not alive")
+      return False
 
     # Try to interrupt
     success = controller.interrupt()
 
     if success:
-        logger.info(f"Successfully interrupted kernel {kernel.id}")
+      logger.info(f"Successfully interrupted kernel {kernel.id}")
     else:
-        logger.warning(f"Failed to interrupt kernel {kernel.id}")
+      logger.warning(f"Failed to interrupt kernel {kernel.id}")
 
     return success
 
@@ -346,29 +325,29 @@ class KernelControllerAdapter:
     success = controller.restart()
 
     if success:
-        # Update runtime state with new connection info if available
-        if hasattr(controller, 'connection_file') and controller.connection_file:
-            runtime_repo = FileSystemRuntimeStateRepository(FileSystemManager(self.base_dir), None)
-            runtime_state = runtime_repo.find_by_kernel_id(kernel.id)
+      # Update runtime state with new connection info if available
+      if hasattr(controller, 'connection_file') and controller.connection_file:
+        runtime_repo = FileSystemRuntimeStateRepository(FileSystemManager(self.base_dir), None)
+        runtime_state = runtime_repo.find_by_kernel_id(kernel.id)
 
-            if runtime_state:
-                runtime_state.connection_file = controller.connection_file
-                if hasattr(controller, 'jupyter_kernel_id'):
-                    runtime_state.jupyter_kernel_id = controller.jupyter_kernel_id
-                runtime_repo.save(runtime_state)
+        if runtime_state:
+          runtime_state.connection_file = controller.connection_file
+          if hasattr(controller, 'jupyter_kernel_id'):
+            runtime_state.jupyter_kernel_id = controller.jupyter_kernel_id
+          runtime_repo.save(runtime_state)
 
-        # Update kernel state
-        kernel._is_alive = True
+      # Update kernel state
+      kernel._is_alive = True
     else:
-        # If restart failed, try to start a new kernel
-        logger.warning(f"Failed to restart kernel {kernel.id}, attempting to start fresh")
+      # If restart failed, try to start a new kernel
+      logger.warning(f"Failed to restart kernel {kernel.id}, attempting to start fresh")
 
-        # Clear controller from cache
-        if str(kernel.id) in self._controllers:
-            del self._controllers[str(kernel.id)]
+      # Clear controller from cache
+      if str(kernel.id) in self._controllers:
+        del self._controllers[str(kernel.id)]
 
-        # Try to start a new kernel
-        success = self.start_kernel(kernel, workspace_dir)
+      # Try to start a new kernel
+      success = self.start_kernel(kernel, workspace_dir)
 
     return success
 
@@ -388,61 +367,57 @@ class KernelControllerAdapter:
     # Try to get controller first
     controller = None
     if str(kernel.id) in self._controllers:
-        controller = self._controllers[str(kernel.id)]
+      controller = self._controllers[str(kernel.id)]
 
     # If no controller in cache, check if we need to reconnect first
     if controller is None:
-        runtime_repo = FileSystemRuntimeStateRepository(FileSystemManager(self.base_dir), None)
-        runtime_state = runtime_repo.find_by_kernel_id(kernel.id)
+      runtime_repo = FileSystemRuntimeStateRepository(FileSystemManager(self.base_dir), None)
+      runtime_state = runtime_repo.find_by_kernel_id(kernel.id)
 
-        # If we have connection info, try to reconnect before shutting down
-        if runtime_state and runtime_state.connection_file:
-            logger.info(f"Attempting to reconnect to kernel {kernel.id} before shutdown")
-            try:
-                connection_info = {
-                    "kernel_id": str(kernel.id),
-                    "name": kernel.name,
-                    "kernel_type": kernel.kernel_type,
-                    "session_id": str(kernel.session_id),
-                    "jupyter_kernel_id": runtime_state.jupyter_kernel_id,
-                    "connection_file": runtime_state.connection_file
-                }
+      # If we have connection info, try to reconnect before shutting down
+      if runtime_state and runtime_state.connection_file:
+        logger.info(f"Attempting to reconnect to kernel {kernel.id} before shutdown")
+        try:
+          connection_info = {
+            "kernel_id": str(kernel.id),
+            "name": kernel.name,
+            "kernel_type": kernel.kernel_type,
+            "session_id": str(kernel.session_id),
+            "jupyter_kernel_id": runtime_state.jupyter_kernel_id,
+            "connection_file": runtime_state.connection_file
+          }
 
-                controller = LegacyKernelController.from_connection_info(connection_info, workspace_dir)
-            except Exception as e:
-                logger.error(f"Error reconnecting to kernel {kernel.id} for shutdown: {e}")
+          controller = LegacyKernelController.from_connection_info(connection_info, workspace_dir)
+        except Exception as e:
+          logger.error(f"Error reconnecting to kernel {kernel.id} for shutdown: {e}")
 
     # If we still don't have a controller, create one
     if controller is None:
-        controller = LegacyKernelController(
-            id=str(kernel.id),
-            name=kernel.name,
-            kernel_type=kernel.kernel_type,
-            session_id=str(kernel.session_id),
-            workspace_dir=workspace_dir)
+      controller = LegacyKernelController(
+        id=str(kernel.id), name=kernel.name, kernel_type=kernel.kernel_type, session_id=str(kernel.session_id), workspace_dir=workspace_dir)
 
     # Attempt to shut down the kernel
     success = controller.shutdown()
 
     # Update kernel state
     if success:
-        logger.info(f"Successfully shut down kernel {kernel.id}")
-        kernel._is_alive = False
+      logger.info(f"Successfully shut down kernel {kernel.id}")
+      kernel._is_alive = False
 
-        # Update runtime state to indicate kernel is stopped
-        runtime_repo = FileSystemRuntimeStateRepository(FileSystemManager(self.base_dir), None)
-        runtime_state = runtime_repo.find_by_kernel_id(kernel.id)
-        if runtime_state:
-            # We don't delete the runtime state here - that's the job of the operator
-            # Just update it to indicate the kernel is no longer alive
-            from ..domain.value_objects import KernelStatus
-            runtime_state.status = KernelStatus.STOPPED
-            runtime_repo.save(runtime_state)
+      # Update runtime state to indicate kernel is stopped
+      runtime_repo = FileSystemRuntimeStateRepository(FileSystemManager(self.base_dir), None)
+      runtime_state = runtime_repo.find_by_kernel_id(kernel.id)
+      if runtime_state:
+        # We don't delete the runtime state here - that's the job of the operator
+        # Just update it to indicate the kernel is no longer alive
+        from ..domain.value_objects import KernelStatus
+        runtime_state.status = KernelStatus.STOPPED
+        runtime_repo.save(runtime_state)
 
-        # Remove from controllers cache
-        if str(kernel.id) in self._controllers:
-            del self._controllers[str(kernel.id)]
+      # Remove from controllers cache
+      if str(kernel.id) in self._controllers:
+        del self._controllers[str(kernel.id)]
     else:
-        logger.warning(f"Failed to shut down kernel {kernel.id}")
+      logger.warning(f"Failed to shut down kernel {kernel.id}")
 
     return success

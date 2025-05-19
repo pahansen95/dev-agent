@@ -64,6 +64,9 @@ def apply_style_to_file(file: Path) -> bool:
     print(f"Error formatting {file}: {e}", file=sys.stderr)
     return False
 
+def file_okay(file: Path) -> bool:
+  return (file.is_file() and file.name.endswith('.py') and not file.name.startswith('.'))
+
 def find_files(dir_tree: Path) -> Generator[Path, None, None]:
   """
   Find all Python files in the given directory tree.
@@ -76,11 +79,11 @@ def find_files(dir_tree: Path) -> Generator[Path, None, None]:
   """
   assert dir_tree.exists() and dir_tree.resolve().is_dir(), f"Directory {dir_tree} does not exist or is not a directory"
 
-  # Iterate over all sibling directories
-  for sibling in dir_tree.iterdir():
-    if sibling.is_dir():
-      for py_file in sibling.rglob('*.py'):
-        yield py_file
+  for child in dir_tree.iterdir():
+    r_child = child.resolve()
+    if r_child.is_dir(): yield from find_files(child)
+    elif file_okay(child):
+      yield child
 
 def main(*targets: str) -> List[str]:
   """
@@ -95,15 +98,16 @@ def main(*targets: str) -> List[str]:
   skipped = []
 
   for trgt in targets:
+    print(f'Considering {trgt}')
     trgt_path = PROJ_ROOT / trgt
-    if trgt_path.resolve().is_file() and trgt_path.suffix == '.py':
-      apply_style_to_file(trgt_path)
-    elif trgt_path.resolve().is_dir():
+    if trgt_path.resolve().is_dir():
       for file in find_files(trgt_path):
         apply_style_to_file(file)
-    else:
-      print(f"Skipping {trgt_path} - not a Python file or directory")
-      skipped.append(str(trgt_path))
+    else: # Maybe a file
+      if file_okay(trgt_path): apply_style_to_file(trgt_path)
+      else:
+        print(f"Skipping {trgt_path} - not a Python file or directory")
+        skipped.append(str(trgt_path))
 
   return skipped
 
@@ -112,7 +116,7 @@ if __name__ == '__main__':
   if len(sys.argv) > 1:
     targets = sys.argv[1:]
   else:
-    targets = ['src', 'tests', Path(__file__).name]
+    targets = ['src', 'tests', 'tools', Path(__file__).name]
 
   skipped = main(*targets)
 
