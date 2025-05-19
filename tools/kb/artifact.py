@@ -26,10 +26,10 @@ from enum import Enum, auto
 from typing import Any, Callable, Dict, List, Optional, Protocol, Self, Tuple, TypedDict, cast
 
 # Will be imported from other modules once they're created
-from tools.kb._core.errors import ConfigurationError
-from tools.kb._utils.filesystem import FileSystem
-from tools.kb._utils.diff import DiffManager
-from tools.kb._utils.llm import LLMService
+from ._core.errors import ConfigurationError
+from ._utils.filesystem import FileSystem
+from ._utils.diff import DiffManager
+from ._utils.llm import LLMService
 
 # Will be imported from the source module once it's created
 # For now define a placeholder to maintain type hints
@@ -1212,7 +1212,7 @@ class Application:
       try:
         if "llm" not in self.config:
           # This would be imported from _utils.llm
-          from tools.kb._utils.llm import MockLLMService
+          from ._utils.llm import MockLLMService
           return MockLLMService()
 
         # This implementation will be updated when _utils.llm is created
@@ -1284,10 +1284,10 @@ class Application:
       epilog="""
 Examples:
   # Render patches to produce an article
-  python -m tools.kb.artifact render --base-file base.md --patch-dir patches --output-file article.md
+  python -m .artifact render --base-file base.md --patch-dir patches --output-file article.md
 
   # Use custom templates
-  python -m tools.kb.artifact render --template-file templates.json --template-name technical
+  python -m .artifact render --template-file templates.json --template-name technical
 
 Environment Variables:
   - AZURE_OPENAI_ENDPOINT: URL for Azure OpenAI endpoint
