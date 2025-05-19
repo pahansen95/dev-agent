@@ -98,26 +98,16 @@ When adding new functionality:
 This architecture ensures separation of concerns while maintaining a cohesive application
 that can evolve to handle diverse document sources and knowledge domains.
 """
-"""
-Knowledge Base Generator Package
-
-A domain-agnostic tool for procedurally generating knowledge base documentation by
-processing source material and applying intelligent content transformations.
-
-This package provides:
-- Source document parsing and representation
-- Content generation via LLM integration
-- Patch-based versioning system
-- Template and guidance management
-
-The architecture follows a layered approach with clear component boundaries:
-- Source processing (document parsing and tree representation)
-- Artifact management (content generation and versioning)
-- Core utilities (cross-cutting concerns)
-"""
 
 # Version information
 __version__ = "0.1.0"
+
+# Initialize logging system early
+from ._utils.logger import configure_logging, get_logger
+
+# Get a logger for the main package
+logger = get_logger(__name__)
+logger.info(f"Knowledge Base Generator v{__version__} initializing")
 
 # Import main modules for easier access
 from .source import (Document, Node, Tree, MarkdownParser)
@@ -129,3 +119,5 @@ from ._core import (ConfigurationError, TemplateError, GuidanceError, ContentGen
 
 # Import utility components
 from ._utils import (FileSystem, DiffManager, LLMService, AzureOpenAIService, MockLLMService)
+
+logger.debug("KB Generator package imports completed")

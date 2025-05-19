@@ -9,7 +9,13 @@ import random
 import time
 import urllib.request
 import urllib.error
-from typing import Protocol
+from typing import Protocol, Dict, Any
+
+from .logger import get_logger
+
+# Get a logger for this module
+logger = get_logger(__name__)
+logger.debug("Initializing LLM service utilities")
 
 class LLMService(Protocol):
 
@@ -47,6 +53,9 @@ class AzureOpenAIService:
             max_retries: Maximum number of retry attempts for failed requests
             retry_delay: Base delay between retries in seconds
         """
+    logger.info(f"Initializing Azure OpenAI service with deployment: {deployment_name}")
+    logger.debug(f"Azure OpenAI endpoint: {endpoint}, API version: {api_version}")
+
     self.endpoint = endpoint
     self.api_key = api_key
     self.deployment_name = deployment_name
@@ -54,7 +63,10 @@ class AzureOpenAIService:
     self.max_retries = max_retries
     self.retry_delay = retry_delay
 
-  def _send_request(self, url: str, data: dict, headers: dict, retry_count: int = 0) -> dict:
+    logger.debug(f"Retry configuration: max_retries={max_retries}, retry_delay={retry_delay}")
+    logger.info(f"Azure OpenAI service initialized successfully")
+
+  def _send_request(self, url: str, data: Dict[str, Any], headers: Dict[str, str], retry_count: int = 0) -> Dict[str, Any]:
     """
         Send HTTP request with retry logic.
         
@@ -71,6 +83,10 @@ class AzureOpenAIService:
             RuntimeError: If all retry attempts fail
         """
     try:
+      logger.debug(f"Sending request to Azure OpenAI (attempt {retry_count + 1}/{self.max_retries + 1})")
+      logger.trace(f"Request URL: {url}")
+      logger.trace(f"Request payload size: {len(json.dumps(data))} bytes")
+
       # Convert data to JSON and encode
       json_data = json.dumps(data).encode('utf-8')
 
@@ -78,8 +94,13 @@ class AzureOpenAIService:
       req = urllib.request.Request(url, data=json_data, headers=headers, method="POST")
 
       # Send the request
+      start_time = time.time()
       with urllib.request.urlopen(req) as response:
-        return json.loads(response.read().decode('utf-8'))
+        response_data = json.loads(response.read().decode('utf-8'))
+        elapsed_time = time.time() - start_time
+
+        logger.debug(f"Request successful, received {len(json.dumps(response_data))} bytes in {elapsed_time:.2f}s")
+        return response_data
 
     except urllib.error.HTTPError as e:
       # Get error details if available
@@ -87,20 +108,23 @@ class AzureOpenAIService:
       try:
         error_details = json.loads(e.read().decode('utf-8'))
         error_msg += f"\nDetails: {error_details}"
+        logger.error(f"HTTP error response: {error_details}")
       except:
-        pass
+        logger.error(f"HTTP error with no parseable details: {e.code} {e.reason}")
 
       # Handle retry logic
       if retry_count < self.max_retries and (e.code >= 500 or e.code == 429):
         # Calculate backoff with exponential increase and jitter
         delay = self.retry_delay * (2**retry_count) * (0.5 + random.random())
-        print(f"Request failed with {e.code}. Retrying in {delay:.2f} seconds...")
+        logger.warning(f"Request failed with {e.code}. Retrying in {delay:.2f} seconds...")
         time.sleep(delay)
         return self._send_request(url, data, headers, retry_count + 1)
       else:
+        logger.error(f"Request failed after {retry_count + 1} attempts: {error_msg}")
         raise RuntimeError(error_msg) from e
 
     except Exception as e:
+      logger.error(f"Unexpected error during request: {str(e)}", exc_info=True)
       raise RuntimeError(f"Request failed: {str(e)}") from e
 
   def complete(self, system_prompt: str, user_prompt: str, max_tokens: int = 2000, temperature: float = 0.7) -> str:
@@ -119,6 +143,10 @@ class AzureOpenAIService:
         Raises:
             RuntimeError: If the API request fails after retries
         """
+    logger.info(f"Generating completion with max_tokens={max_tokens}, temperature={temperature:.2f}")
+    logger.debug(f"System prompt length: {len(system_prompt)} chars")
+    logger.debug(f"User prompt length: {len(user_prompt)} chars")
+
     # Prepare the request body
     request_body = {
       "messages": [{
@@ -138,24 +166,46 @@ class AzureOpenAIService:
     # Prepare headers
     headers = {"Content-Type": "application/json", "api-key": self.api_key}
 
-    # Send request with retry logic
-    response_data = self._send_request(url, request_body, headers)
+    try:
+      # Send request with retry logic
+      start_time = time.time()
+      response_data = self._send_request(url, request_body, headers)
 
-    # Extract and return the content
-    return response_data["choices"][0]["message"]["content"]
+      # Extract and return the content
+      completion = response_data["choices"][0]["message"]["content"]
+      elapsed_time = time.time() - start_time
+
+      logger.info(f"Completion generated successfully in {elapsed_time:.2f}s")
+      logger.debug(f"Completion length: {len(completion)} chars")
+
+      # Log token usage if available
+      if "usage" in response_data:
+        usage = response_data["usage"]
+        logger.debug(
+          f"Token usage: {usage.get('prompt_tokens', 0)} prompt, "
+          f"{usage.get('completion_tokens', 0)} completion, "
+          f"{usage.get('total_tokens', 0)} total")
+
+      return completion
+
+    except Exception as e:
+      logger.error(f"Failed to generate completion: {str(e)}", exc_info=True)
+      raise RuntimeError(f"Completion generation failed: {str(e)}") from e
 
 class MockLLMService:
 
   """Mock implementation of the LLM service for testing."""
 
-  def __init__(self, responses: dict = None) -> None:
+  def __init__(self, responses: Dict[str, str] = None) -> None:
     """
         Initialize the mock LLM service.
         
         Args:
             responses: Optional dictionary of pre-defined responses
         """
+    logger.info("Initializing MockLLMService")
     self.responses = responses or {}
+    logger.debug(f"Mock responses configured for {len(self.responses)} prompts")
 
   def complete(self, system_prompt: str, user_prompt: str, max_tokens: int = 2000, temperature: float = 0.7) -> str:
     """
@@ -170,18 +220,30 @@ class MockLLMService:
         Returns:
             A pre-defined response or a generic response
         """
+    logger.info("Generating mock completion")
+    logger.debug(f"Mock parameters: max_tokens={max_tokens}, temperature={temperature:.2f}")
+    logger.trace(f"System prompt length: {len(system_prompt)} chars")
+    logger.trace(f"User prompt length: {len(user_prompt)} chars")
+
     # Look for an exact match in pre-defined responses
     if user_prompt in self.responses:
+      logger.debug(f"Found exact match for user prompt in pre-defined responses")
       return self.responses[user_prompt]
 
     # For section titles, generate a mock response
     if "section_title" in user_prompt:
+      logger.debug("Generating section title response")
       title_match = r"section titled \"([^\"]+)\""
       import re
       match = re.search(title_match, user_prompt)
       if match:
         section_title = match.group(1)
-        return f"ADD content for section: {section_title}\n\nThis is mock content for {section_title}.\n\nChanges:\nADD: {section_title} - Added mock content"
+        logger.debug(f"Extracted section title: '{section_title}'")
+        response = f"ADD content for section: {section_title}\n\nThis is mock content for {section_title}.\n\nChanges:\nADD: {section_title} - Added mock content"
+        return response
 
     # Default generic response
+    logger.debug("Using default generic response")
     return "Generated content based on the provided prompt.\n\nChanges:\nADD: Default Section - Added generic content"
+
+logger.debug("LLM service utilities initialized")

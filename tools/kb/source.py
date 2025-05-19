@@ -16,7 +16,14 @@ from __future__ import annotations
 import os
 import re
 import sys
+import time
 from typing import Any, Dict, List, Optional, Tuple
+
+from ._utils.logger import get_logger, add_log_context
+
+# Get a logger for this module
+logger = get_logger(__name__)
+logger.debug("Initializing source processing module")
 
 # -----------------------------------------------------------------------------
 # Document Processing Layer
@@ -40,9 +47,11 @@ class Document:
             content: Document content
             size: Original document size in bytes (if known)
         """
+    logger.debug(f"Creating document: {name}")
     self.name = name
     self.content = content
     self.size = size if size > 0 else len(content.encode('utf-8'))
+    logger.debug(f"Document '{name}' created, size: {self.size} bytes")
 
   def __repr__(self) -> str:
     """Return string representation of the document."""
@@ -56,6 +65,7 @@ class MarkdownStream:
 
   def __init__(self) -> None:
     """Initialize the markdown stream."""
+    logger.debug("Initializing MarkdownStream")
     self.content = "" # Full stream content
     self.documents: List[Document] = []
 
@@ -66,6 +76,7 @@ class MarkdownStream:
         Returns:
             The full content as a string
         """
+    logger.trace(f"Reading all content from stream, size: {len(self.content)} bytes")
     return self.content
 
   def get_documents(self) -> List[Document]:
@@ -75,6 +86,7 @@ class MarkdownStream:
         Returns:
             List of Document objects
         """
+    logger.trace(f"Getting documents from stream, count: {len(self.documents)}")
     return self.documents
 
   def _parse_document_separators(self, content: str) -> None:
@@ -84,28 +96,39 @@ class MarkdownStream:
         Args:
             content: The stream content to parse
         """
+    logger.debug("Parsing document separators from stream content")
+    logger.trace(f"Content size: {len(content)} bytes")
+
     # Split content by document separators
     parts = self.DOC_SEPARATOR_PATTERN.split(content)
+    logger.trace(f"Split content into {len(parts)} parts")
 
     # First part is either empty or content before the first separator
     current_content = parts[0].strip()
 
     # If there's content before the first separator, treat it as a default document
     if current_content:
+      logger.debug("Found content before first separator, creating default document")
       self.documents.append(Document("default", current_content))
 
     # Process the remaining parts (name, size, content, name, size, content, ...)
     i = 1
+    doc_count = 0
     while i < len(parts) - 2:
       doc_name = parts[i]
       try:
         doc_size = int(parts[i + 1])
       except ValueError:
+        logger.warning(f"Invalid document size for '{doc_name}', defaulting to 0")
         doc_size = 0
       doc_content = parts[i + 2].strip()
 
+      logger.debug(f"Creating document from separator: {doc_name} ({doc_size} bytes)")
       self.documents.append(Document(doc_name, doc_content, doc_size))
+      doc_count += 1
       i += 3
+
+    logger.debug(f"Parsed {doc_count} documents from stream")
 
 class FileMarkdownStream(MarkdownStream):
 
@@ -123,6 +146,8 @@ class FileMarkdownStream(MarkdownStream):
             IOError: If there's an error reading a file
         """
     super().__init__()
+    logger.info(f"Creating FileMarkdownStream from {len(file_paths)} files")
+    logger.debug(f"File paths: {', '.join(file_paths)}")
     self.file_paths = file_paths
     self._load_files()
 
@@ -136,19 +161,34 @@ class FileMarkdownStream(MarkdownStream):
         """
     # Read all files and concatenate content
     combined_content = []
+    logger.debug("Loading content from files")
 
     for file_path in self.file_paths:
-      with open(file_path, 'r', encoding='utf-8') as f:
-        file_content = f.read()
-        file_size = len(file_content.encode('utf-8'))
+      logger.debug(f"Reading file: {file_path}")
+      try:
+        start_time = time.time()
+        with open(file_path, 'r', encoding='utf-8') as f:
+          file_content = f.read()
+          file_size = len(file_content.encode('utf-8'))
+        elapsed_time = time.time() - start_time
 
-      # Add document separator before file content
-      separator = f'<!-- DOC name="{os.path.basename(file_path)}" size_of={file_size} -->'
-      combined_content.append(separator)
-      combined_content.append(file_content)
+        logger.debug(f"Read {file_size} bytes from {file_path} in {elapsed_time:.4f}s")
+
+        # Add document separator before file content
+        separator = f'<!-- DOC name="{os.path.basename(file_path)}" size_of={file_size} -->'
+        combined_content.append(separator)
+        combined_content.append(file_content)
+
+      except FileNotFoundError:
+        logger.error(f"File not found: {file_path}")
+        raise
+      except Exception as e:
+        logger.error(f"Error reading {file_path}: {str(e)}", exc_info=True)
+        raise IOError(f"Error reading {file_path}: {str(e)}")
 
     # Store the combined content
     self.content = "\n\n".join(combined_content)
+    logger.debug(f"Combined content size: {len(self.content)} bytes")
 
     # Parse document separators
     self._parse_document_separators(self.content)
@@ -166,21 +206,31 @@ class StdinMarkdownStream(MarkdownStream):
                             with document separators
         """
     super().__init__()
+    logger.info(f"Creating StdinMarkdownStream, concat_stream={is_concat_stream}")
     self.is_concat_stream = is_concat_stream
     self._load_from_stdin()
 
   def _load_from_stdin(self) -> None:
     """Load content from standard input and parse document separators."""
+    logger.debug("Loading content from stdin")
+
     # Read all content from stdin
+    start_time = time.time()
     self.content = sys.stdin.read()
+    elapsed_time = time.time() - start_time
+
+    content_size = len(self.content)
+    logger.debug(f"Read {content_size} bytes from stdin in {elapsed_time:.4f}s")
 
     # If not a concat stream, wrap in a document separator
     if not self.is_concat_stream:
       # Treat as a single document
+      logger.debug("Not a concat stream, creating a single document")
       doc_size = len(self.content.encode('utf-8'))
       self.documents.append(Document("stdin", self.content, doc_size))
     else:
       # Parse document separators
+      logger.debug("Parsing document separators from stdin content")
       self._parse_document_separators(self.content)
 
 class Node:
@@ -205,6 +255,10 @@ class Node:
     self.children: List[Node] = []
     self.document: Optional[Document] = document
 
+    parent_title = parent.title if parent else "None"
+    doc_name = document.name if document else "None"
+    logger.trace(f"Created node: level={level}, title='{title}', parent='{parent_title}', doc='{doc_name}'")
+
   def add_child(self, child: Node) -> None:
     """
         Add a child node to this node.
@@ -212,6 +266,7 @@ class Node:
         Args:
             child: The child node to add
         """
+    logger.trace(f"Adding child '{child.title}' to node '{self.title}'")
     child.parent = self
     self.children.append(child)
 
@@ -222,6 +277,7 @@ class Node:
         Args:
             content: The content to append
         """
+    logger.trace(f"Adding content to node '{self.title}', size: {len(content)} bytes")
     if self.content:
       self.content += "\n" + content
     else:
@@ -234,7 +290,9 @@ class Node:
         Returns:
             True if the node is empty, False otherwise
         """
-    return not self.content.strip() and not self.children
+    is_empty = not self.content.strip() and not self.children
+    logger.trace(f"Checked if node '{self.title}' is empty: {is_empty}")
+    return is_empty
 
   def __repr__(self) -> str:
     """
@@ -252,10 +310,12 @@ class Tree:
 
   def __init__(self) -> None:
     """Initialize an empty document tree."""
+    logger.debug("Initializing document tree")
     self.root: Node = Node(0, "ROOT")
     self.current: Node = self.root
     # Map of document names to subtrees
     self.document_roots: Dict[str, Node] = {}
+    logger.debug("Document tree initialized with root node")
 
   def add_node(self, level: int, title: str, content: str = "", document: Optional[Document] = None) -> Node:
     """
@@ -270,6 +330,9 @@ class Tree:
         Returns:
             The newly created node
         """
+    doc_name = document.name if document else "None"
+    logger.debug(f"Adding node: level={level}, title='{title}', doc='{doc_name}'")
+
     # Find the appropriate parent for this node
     parent: Node = self.root
     node: Node = self.root
@@ -277,6 +340,7 @@ class Tree:
     # If this is the first node for a document, create a document root
     if document and document.name not in self.document_roots:
       # Create a document root node
+      logger.debug(f"Creating document root node for '{document.name}'")
       doc_root = Node(0, document.name, "", self.root, document)
       self.root.add_child(doc_root)
       self.document_roots[document.name] = doc_root
@@ -284,20 +348,24 @@ class Tree:
       node = doc_root
     elif document and document.name in self.document_roots:
       # Use existing document root
+      logger.trace(f"Using existing document root for '{document.name}'")
       parent = self.document_roots[document.name]
       node = parent
 
     # Traverse up the tree until we find a node with a lower level
     while node.level >= level and node.parent is not None:
+      logger.trace(f"Moving up tree from node '{node.title}' (level {node.level}) to find parent for level {level}")
       node = node.parent
 
     parent = node
+    logger.trace(f"Found parent node: '{parent.title}' (level {parent.level})")
 
     # Create and add the new node
     new_node = Node(level, title, content, parent, document)
     parent.add_child(new_node)
     self.current = new_node
 
+    logger.debug(f"Added node '{title}' (level {level}) to parent '{parent.title}' (level {parent.level})")
     return new_node
 
   def add_content_to_current(self, content: str) -> None:
@@ -308,7 +376,10 @@ class Tree:
             content: The content to add
         """
     if self.current != self.root:
+      logger.trace(f"Adding content to current node '{self.current.title}', size: {len(content)} bytes")
       self.current.add_content(content)
+    else:
+      logger.warning("Attempted to add content to root node, ignoring")
 
   def dfs_traversal(self) -> List[Tuple[Node, int]]:
     """
@@ -317,6 +388,7 @@ class Tree:
         Returns:
             List of (node, depth) pairs
         """
+    logger.debug("Performing depth-first traversal of document tree")
     result: List[Tuple[Node, int]] = []
 
     def _dfs(node: Node, depth: int = 0) -> None:
@@ -325,6 +397,7 @@ class Tree:
         _dfs(child, depth + 1)
 
     _dfs(self.root)
+    logger.debug(f"Traversal completed, visited {len(result)} nodes")
     return result
 
   def get_nodes_by_document(self, document_name: str) -> List[Node]:
@@ -337,7 +410,10 @@ class Tree:
         Returns:
             List of nodes in the document
         """
+    logger.debug(f"Getting nodes for document: '{document_name}'")
+
     if document_name not in self.document_roots:
+      logger.warning(f"Document '{document_name}' not found in tree")
       return []
 
     result = []
@@ -350,6 +426,7 @@ class Tree:
         _collect_nodes(child)
 
     _collect_nodes(doc_root)
+    logger.debug(f"Found {len(result)} nodes for document '{document_name}'")
     return result
 
   def validate(self) -> List[str]:
@@ -359,24 +436,32 @@ class Tree:
         Returns:
             A list of validation warnings, empty if no issues found
         """
+    logger.info("Validating document tree structure")
     warnings = []
 
     # Validate each node in the tree
+    node_count = 0
     for node, depth in self.dfs_traversal():
+      node_count += 1
       # Skip root node and document root nodes
       if node == self.root or node.level == 0:
         continue
 
       # Check for empty nodes
       if node.is_empty():
-        warnings.append(f"Empty node found: '{node.title}'")
+        warning = f"Empty node found: '{node.title}'"
+        logger.warning(warning)
+        warnings.append(warning)
 
       # Check for invalid level jumps (e.g., h1 -> h3)
       if node.parent and node.parent.level > 0: # Skip root and doc roots
         if node.level > node.parent.level + 1:
-          warnings.append(f"Header level jump from {node.parent.level} to {node.level} "
-                          f"at node '{node.title}'")
+          warning = f"Header level jump from {node.parent.level} to {node.level} " \
+                    f"at node '{node.title}'"
+          logger.warning(warning)
+          warnings.append(warning)
 
+    logger.info(f"Validation completed: {len(warnings)} warnings found in {node_count} nodes")
     return warnings
 
 class MarkdownParser:
@@ -399,19 +484,40 @@ class MarkdownParser:
         Raises:
             ParsingError: If there's an error parsing the stream
         """
+    logger.info("Parsing markdown stream")
+    add_log_context("operation", "parse_stream")
+
+    start_time = time.time()
     tree = Tree()
 
     # Process each document in the stream
-    for document in stream.get_documents():
-      MarkdownParser._parse_document(document, tree)
+    doc_count = len(stream.get_documents())
+    logger.debug(f"Processing {doc_count} documents from stream")
+
+    for i, document in enumerate(stream.get_documents(), 1):
+      logger.debug(f"Parsing document {i}/{doc_count}: '{document.name}' ({document.size} bytes)")
+      add_log_context("document", document.name)
+      try:
+        MarkdownParser._parse_document(document, tree)
+      except Exception as e:
+        logger.error(f"Error parsing document '{document.name}': {str(e)}", exc_info=True)
+        raise
+      finally:
+        add_log_context("document", None)
 
     # Validate the tree
     warnings = tree.validate()
     if warnings:
-      # Just log warnings but don't fail
-      print("Markdown parsing warnings:")
+      # Log warnings but don't fail
+      logger.warning(f"Markdown parsing completed with {len(warnings)} warnings")
       for warning in warnings:
-        print(f"- {warning}")
+        logger.warning(f"Parse warning: {warning}")
+    else:
+      logger.info("Markdown parsing completed successfully, no warnings")
+
+    elapsed_time = time.time() - start_time
+    logger.info(f"Stream parsing completed in {elapsed_time:.4f}s")
+    add_log_context("operation", None)
 
     return tree
 
@@ -427,10 +533,15 @@ class MarkdownParser:
         Raises:
             ParsingError: If there's an error parsing the document
         """
+    logger.debug(f"Parsing document content: '{document.name}'")
+
     lines = document.content.splitlines()
     current_node = None
     current_content: List[str] = []
     line_number = 0
+    header_count = 0
+
+    logger.trace(f"Document has {len(lines)} lines")
 
     for line in lines:
       line_number += 1
@@ -438,9 +549,13 @@ class MarkdownParser:
       header_match = MarkdownParser.HEADER_PATTERN.match(line)
 
       if header_match:
+        header_count += 1
+        logger.trace(f"Found header at line {line_number}: {line}")
+
         # If we have accumulated content, add it to the current node
         if current_content and current_node:
-          current_node.content += "\n".join(current_content)
+          current_node.add_content("\n".join(current_content))
+          logger.trace(f"Added {len(current_content)} lines to node: '{current_node.title}'")
           current_content = []
 
         # Create a new node for this header
@@ -449,11 +564,15 @@ class MarkdownParser:
 
         # Check for empty title
         if not title.strip():
-          raise ParsingError(f"Empty header title at line {line_number} in document '{document.name}'")
+          error_msg = f"Empty header title at line {line_number} in document '{document.name}'"
+          logger.error(error_msg)
+          raise ParsingError(error_msg)
 
         # Check for excessively deep header level
         if level > 6:
-          raise ParsingError(f"Header level too deep (level {level}) at line {line_number} in document '{document.name}': {line}")
+          error_msg = f"Header level too deep (level {level}) at line {line_number} in document '{document.name}': {line}"
+          logger.error(error_msg)
+          raise ParsingError(error_msg)
 
         current_node = tree.add_node(level, title, "", document)
       else:
@@ -462,7 +581,10 @@ class MarkdownParser:
 
     # Add any remaining content to the last node
     if current_content and current_node:
-      current_node.content += "\n".join(current_content)
+      logger.trace(f"Adding remaining {len(current_content)} lines to node: '{current_node.title}'")
+      current_node.add_content("\n".join(current_content))
+
+    logger.debug(f"Completed parsing document: '{document.name}' - {header_count} headers found")
 
   @staticmethod
   def parse_files(file_paths: List[str]) -> Tree:
@@ -478,8 +600,19 @@ class MarkdownParser:
         Raises:
             ParsingError: If there's an error parsing any file
         """
-    stream = FileMarkdownStream(file_paths)
-    return MarkdownParser.parse_stream(stream)
+    logger.info(f"Parsing {len(file_paths)} markdown files")
+    add_log_context("operation", "parse_files")
+
+    try:
+      stream = FileMarkdownStream(file_paths)
+      tree = MarkdownParser.parse_stream(stream)
+      logger.info("File parsing completed successfully")
+      return tree
+    except Exception as e:
+      logger.error(f"Error parsing files: {str(e)}", exc_info=True)
+      raise
+    finally:
+      add_log_context("operation", None)
 
   @staticmethod
   def parse_stdin(is_concat_stream: bool = False) -> Tree:
@@ -496,8 +629,19 @@ class MarkdownParser:
         Raises:
             ParsingError: If there's an error parsing the input
         """
-    stream = StdinMarkdownStream(is_concat_stream)
-    return MarkdownParser.parse_stream(stream)
+    logger.info(f"Parsing markdown from stdin, concat_stream={is_concat_stream}")
+    add_log_context("operation", "parse_stdin")
+
+    try:
+      stream = StdinMarkdownStream(is_concat_stream)
+      tree = MarkdownParser.parse_stream(stream)
+      logger.info("Stdin parsing completed successfully")
+      return tree
+    except Exception as e:
+      logger.error(f"Error parsing stdin: {str(e)}", exc_info=True)
+      raise
+    finally:
+      add_log_context("operation", None)
 
 # -----------------------------------------------------------------------------
 # Application Layer - Source Command
@@ -521,35 +665,67 @@ class Application:
             FileNotFoundError: If any file doesn't exist
             IOError: If there's an error reading any file
         """
+    logger.info(f"Concatenating {len(file_paths)} files")
+    add_log_context("operation", "concat_files")
+
     if not file_paths:
-      raise ValueError("No files specified for concatenation")
+      error_msg = "No files specified for concatenation"
+      logger.error(error_msg)
+      raise ValueError(error_msg)
 
     # Use stdout as default output
     output = output_file or sys.stdout
+    logger.debug(f"Output destination: {'file' if output_file else 'stdout'}")
 
     # Process one file at a time
+    total_size = 0
+    start_time = time.time()
+
     for file_path in file_paths:
       try:
+        logger.debug(f"Processing file: {file_path}")
+
         # Get file size from stat before opening
         file_stats = os.stat(file_path)
         file_size = file_stats.st_size
+        logger.trace(f"File size: {file_size} bytes")
+        total_size += file_size
 
         # Create document separator
         separator = f'<!-- DOC name="{os.path.basename(file_path)}" size_of={file_size} -->'
-        output.write(separator)
+        output.write(separator + "\n\n")
+        logger.trace(f"Wrote document separator for: {file_path}")
 
         # Process file in chunks to avoid loading it all into memory
+        chunk_size = 65536 # 64KB chunks
+        chunks_processed = 0
+        bytes_processed = 0
+
         with open(file_path, 'r', encoding='utf-8') as f:
           while True:
-            chunk = f.read(65536) # 64KB chunks
+            chunk = f.read(chunk_size)
             if not chunk:
               break
             output.write(chunk)
+            chunks_processed += 1
+            bytes_processed += len(chunk)
+            logger.trace(f"Processed chunk {chunks_processed} from {file_path}, size: {len(chunk)} bytes")
+
+        logger.debug(f"Completed file {file_path}: {bytes_processed} bytes in {chunks_processed} chunks")
+
+        # Add newlines between files
+        output.write("\n\n")
 
       except FileNotFoundError:
-        raise FileNotFoundError(f"File not found: {file_path}")
+        logger.error(f"File not found: {file_path}")
+        raise
       except IOError as e:
+        logger.error(f"Error reading {file_path}: {str(e)}", exc_info=True)
         raise IOError(f"Error reading {file_path}: {str(e)}")
+
+    elapsed_time = time.time() - start_time
+    logger.info(f"Concatenation completed: {len(file_paths)} files, {total_size} bytes in {elapsed_time:.4f}s")
+    add_log_context("operation", None)
 
   @staticmethod
   def create_cli_parser() -> Any: # argparse.ArgumentParser
@@ -560,6 +736,8 @@ class Application:
             Configured argument parser
         """
     import argparse
+
+    logger.debug("Creating CLI parser for source operations")
 
     parser = argparse.ArgumentParser(
       description="Process source documents for knowledge base generation.",
@@ -585,6 +763,13 @@ Examples:
     # Output options
     parser.add_argument("--output-file", "-o", help="Output file path (stdout if not specified)")
 
+    # Add logging-specific arguments
+    parser.add_argument("--log-level", choices=["TRACE", "DEBUG", "INFO", "WARNING", "ERROR"], help="Set logging level")
+    parser.add_argument("--log-format", choices=["text", "json"], help="Set log output format")
+    parser.add_argument("--log-output", choices=["console", "file", "both"], help="Set log output destination")
+    parser.add_argument("--log-file", help="Set log file name (when output is file or both)")
+
+    logger.debug("CLI parser created successfully")
     return parser
 
   @staticmethod
@@ -598,42 +783,72 @@ Examples:
         3. Performs the requested action
         """
     import argparse
+    import datetime
+    import json
 
-    # Parse command-line arguments
+    # Import logger configuration function
+    from ._utils.logger import configure_logging, get_logger, set_correlation_id
+
+    # Create a unique correlation ID for this run
+    correlation_id = f"kb-source-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+    set_correlation_id(correlation_id)
+
+    # Parse command-line arguments first to get logging configuration
     parser = Application.create_cli_parser()
     args = parser.parse_args()
 
+    # Configure logging based on arguments
+    configure_logging(level=args.log_level, format_type=args.log_format, output=args.log_output, filename=args.log_file)
+
+    # Get a logger for the application
+    logger = get_logger("kb.source.application")
+    logger.info(f"KB Source operation starting: {args.action}")
+    logger.debug(f"Command line arguments: {vars(args)}")
+
     try:
       if args.action == "concat":
+        logger.info(f"Concatenating {len(args.files)} files")
+
         # Get output file handle if specified
         output_file = None
         if args.output_file:
+          logger.debug(f"Opening output file: {args.output_file}")
           output_file = open(args.output_file, 'w', encoding='utf-8')
 
         try:
           # Process files incrementally
           Application.concat_files(args.files, output_file)
+          logger.info("Concatenation completed successfully")
         finally:
           # Close output file if we opened one
           if output_file:
+            logger.debug(f"Closing output file: {args.output_file}")
             output_file.close()
 
       elif args.action == "validate":
+        logger.info(f"Validating {len(args.files)} files")
+
         # Parse and validate the documents
         tree = MarkdownParser.parse_files(args.files)
         warnings = tree.validate()
 
         if warnings:
+          logger.warning(f"Validation found {len(warnings)} warnings")
           print("Validation warnings:")
           for warning in warnings:
             print(f"- {warning}")
         else:
+          logger.info("Validation completed: no issues found")
           print("Documents validated successfully. No issues found.")
 
+      logger.info("KB Source operation completed successfully")
+
     except (ValueError, FileNotFoundError, IOError) as e:
+      logger.error(f"Error: {str(e)}")
       print(f"Error: {str(e)}", file=sys.stderr)
       sys.exit(1)
     except Exception as e:
+      logger.error(f"Unhandled exception: {str(e)}", exc_info=True)
       print(f"Error: {str(e)}", file=sys.stderr)
       import traceback
       traceback.print_exc(file=sys.stderr)

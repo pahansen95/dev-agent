@@ -20,19 +20,23 @@ import json
 import os
 import re
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
 from typing import Any, Callable, Dict, List, Optional, Protocol, Self, Tuple, TypedDict, cast
 
-# Will be imported from other modules once they're created
+# Import from other modules
 from ._core.errors import ConfigurationError
 from ._utils.filesystem import FileSystem
 from ._utils.diff import DiffManager
 from ._utils.llm import LLMService
+from ._utils.logger import get_logger, add_log_context, set_correlation_id
 
-# Will be imported from the source module once it's created
-# For now define a placeholder to maintain type hints
+# Get a logger for this module
+logger = get_logger(__name__)
+
+# Placeholder for DocumentNode from source module
 class DocumentNode:
 
   """Placeholder for the DocumentNode class from the source module."""
@@ -129,8 +133,10 @@ class PromptTemplate:
     try:
       return self.system_template.format(**kwargs)
     except KeyError as e:
+      logger.error(f"Missing parameter for system template: {e}")
       raise TemplateError(f"Missing parameter for system template: {e}")
     except Exception as e:
+      logger.error(f"Error formatting system template: {e}")
       raise TemplateError(f"Error formatting system template: {e}")
 
   def format_user_prompt(self, **kwargs) -> str:
@@ -149,8 +155,10 @@ class PromptTemplate:
     try:
       return self.user_template.format(**kwargs)
     except KeyError as e:
+      logger.error(f"Missing parameter for user template: {e}")
       raise TemplateError(f"Missing parameter for user template: {e}")
     except Exception as e:
+      logger.error(f"Error formatting user template: {e}")
       raise TemplateError(f"Error formatting user template: {e}")
 
 class TemplateManager:
@@ -207,6 +215,7 @@ You should choose SKIP if the content is:
 
   def __init__(self) -> None:
     """Initialize the template manager with default templates."""
+    logger.debug("Initializing TemplateManager")
     self.templates: Dict[str, PromptTemplate] = {
       "default": PromptTemplate(system_template=self.DEFAULT_SYSTEM_TEMPLATE, user_template=self.DEFAULT_USER_TEMPLATE)
     }
@@ -227,6 +236,7 @@ You should choose SKIP if the content is:
       raise TemplateError(f"Template '{name}' already exists")
 
     self.templates[name] = PromptTemplate(system_template=system_template, user_template=user_template)
+    logger.debug(f"Added template: '{name}'")
 
   def get_template(self, name: str = "default") -> PromptTemplate:
     """
@@ -242,6 +252,7 @@ You should choose SKIP if the content is:
             TemplateError: If the template name doesn't exist
         """
     if name not in self.templates:
+      logger.error(f"Template '{name}' not found")
       raise TemplateError(f"Template '{name}' not found")
     return self.templates[name]
 
@@ -269,6 +280,8 @@ You should choose SKIP if the content is:
         Raises:
             TemplateError: If there's an error loading templates
         """
+    logger.info(f"Loading templates from file: {filepath}")
+
     try:
       with open(filepath, 'r', encoding='utf-8') as f:
         templates_data = json.load(f)
@@ -287,12 +300,15 @@ You should choose SKIP if the content is:
         self.add_template(name, system_template, user_template)
         loaded_templates.append(name)
 
+      logger.info(f"Loaded {len(loaded_templates)} templates: {', '.join(loaded_templates)}")
       return loaded_templates
 
     except json.JSONDecodeError:
+      logger.error(f"Invalid JSON format in template file: {filepath}")
       raise TemplateError(f"Invalid JSON format in template file: {filepath}")
     except Exception as e:
       if not isinstance(e, TemplateError):
+        logger.error(f"Error loading template file: {str(e)}")
         raise TemplateError(f"Error loading template file: {str(e)}")
       raise
 
@@ -311,6 +327,7 @@ class GuidanceManager:
 
   def __init__(self) -> None:
     """Initialize the guidance manager with default parameters."""
+    logger.debug("Initializing GuidanceManager")
     self.guidance: Dict[str, Dict[str, str]] = {"default": self.DEFAULT_GUIDANCE.copy()}
 
   def add_guidance(self, name: str, parameters: Dict[str, str]) -> None:
@@ -325,6 +342,7 @@ class GuidanceManager:
             GuidanceError: If the guidance name already exists
         """
     if name in self.guidance:
+      logger.error(f"Guidance '{name}' already exists")
       raise GuidanceError(f"Guidance '{name}' already exists")
 
     # Ensure all required parameters are present
@@ -333,6 +351,7 @@ class GuidanceManager:
         parameters[key] = self.DEFAULT_GUIDANCE[key]
 
     self.guidance[name] = parameters
+    logger.debug(f"Added guidance profile: '{name}'")
 
   def get_guidance(self, name: str = "default") -> Dict[str, str]:
     """
@@ -348,6 +367,7 @@ class GuidanceManager:
             GuidanceError: If the guidance name doesn't exist
         """
     if name not in self.guidance:
+      logger.error(f"Guidance '{name}' not found")
       raise GuidanceError(f"Guidance '{name}' not found")
     return self.guidance[name]
 
@@ -378,6 +398,8 @@ class GuidanceManager:
         Raises:
             GuidanceError: If there's an error loading guidance
         """
+    logger.info(f"Loading guidance profiles from file: {filepath}")
+
     try:
       with open(filepath, 'r', encoding='utf-8') as f:
         guidance_data = json.load(f)
@@ -390,12 +412,15 @@ class GuidanceManager:
         self.add_guidance(name, parameters)
         loaded_guidance.append(name)
 
+      logger.info(f"Loaded {len(loaded_guidance)} guidance profiles: {', '.join(loaded_guidance)}")
       return loaded_guidance
 
     except json.JSONDecodeError:
+      logger.error(f"Invalid JSON format in guidance file: {filepath}")
       raise GuidanceError(f"Invalid JSON format in guidance file: {filepath}")
     except Exception as e:
       if not isinstance(e, GuidanceError):
+        logger.error(f"Error loading guidance file: {str(e)}")
         raise GuidanceError(f"Error loading guidance file: {str(e)}")
       raise
 
@@ -405,6 +430,7 @@ class ContentSelector:
 
   def __init__(self) -> None:
     """Initialize the content selector with no rules."""
+    logger.debug("Initializing ContentSelector")
     self.rules: List[ContentSelectionRule] = []
 
   def add_rule(self, rule: "ContentSelectionRule") -> None:
@@ -417,6 +443,7 @@ class ContentSelector:
     self.rules.append(rule)
     # Sort rules by priority (descending)
     self.rules.sort(key=lambda r: r.priority, reverse=True)
+    logger.debug(f"Added selection rule: '{rule.name}' (priority: {rule.priority})")
 
   def should_include(self, node: DocumentNode) -> bool:
     """
@@ -448,7 +475,10 @@ class ContentSelector:
         Returns:
             List of nodes that should be included
         """
-    return [node for node in nodes if self.should_include(node)]
+    logger.debug(f"Filtering {len(nodes)} nodes with {len(self.rules)} rules")
+    included_nodes = [node for node in nodes if self.should_include(node)]
+    logger.debug(f"Selected {len(included_nodes)}/{len(nodes)} nodes for inclusion")
+    return included_nodes
 
 class ContentSelectionRule:
 
@@ -489,6 +519,7 @@ def create_header_level_rule(max_level: int) -> ContentSelectionRule:
     Returns:
         ContentSelectionRule that includes nodes with level <= max_level
     """
+  logger.debug(f"Creating header level rule with max_level={max_level}")
   return ContentSelectionRule(name=f"header_level_max_{max_level}", condition=lambda node: node.level <= max_level, priority=100)
 
 def create_keyword_rule(keywords: List[str], case_sensitive: bool = False) -> ContentSelectionRule:
@@ -502,6 +533,8 @@ def create_keyword_rule(keywords: List[str], case_sensitive: bool = False) -> Co
     Returns:
         ContentSelectionRule that includes nodes with matching keywords
     """
+  sensitivity = "case-sensitive" if case_sensitive else "case-insensitive"
+  logger.debug(f"Creating keyword rule with {len(keywords)} keywords ({sensitivity})")
 
   def has_keywords(node: DocumentNode) -> bool:
     text = node.title + "\n" + node.content
@@ -526,6 +559,7 @@ def create_regex_rule(pattern: str) -> ContentSelectionRule:
     Returns:
         ContentSelectionRule that includes nodes matching the pattern
     """
+  logger.debug(f"Creating regex rule with pattern: {pattern}")
   regex = re.compile(pattern)
 
   def matches_pattern(node: DocumentNode) -> bool:
@@ -539,9 +573,8 @@ class SimpleContextWindowManager:
   """
     Manages context window size constraints for large content sections.
     
-    This class helps ensure that content being processed fits within
-    LLM context window limitations by intelligently splitting and
-    recombining content as needed.
+    This class ensures content being processed fits within LLM context window
+    limitations by intelligently splitting and recombining content.
     """
 
   def __init__(self, max_tokens_per_window: int = 4000) -> None:
@@ -551,6 +584,7 @@ class SimpleContextWindowManager:
         Args:
             max_tokens_per_window: Maximum tokens allowed per context window
         """
+    logger.debug(f"Initializing SimpleContextWindowManager (max_tokens={max_tokens_per_window})")
     self.max_tokens_per_window = max_tokens_per_window
     # Very rough approximation: 1 token ≈ 4 characters for English text
     self.chars_per_token = 4
@@ -580,7 +614,9 @@ class SimpleContextWindowManager:
         Returns:
             List of content chunks
         """
-    if self._estimate_token_count(content) <= self.max_tokens_per_window:
+    token_estimate = self._estimate_token_count(content)
+
+    if token_estimate <= self.max_tokens_per_window:
       return [content]
 
     # Split by paragraphs first
@@ -631,6 +667,7 @@ class SimpleContextWindowManager:
     if current_chunk:
       chunks.append(current_chunk)
 
+    logger.debug(f"Split content into {len(chunks)} chunks for processing")
     return chunks
 
   def process_large_content(self, content: str, processor: Callable[[str], str]) -> str:
@@ -653,7 +690,8 @@ class SimpleContextWindowManager:
     processed_chunks = [processor(chunk) for chunk in chunks]
 
     # Reassemble the processed chunks
-    return "\n\n".join(processed_chunks)
+    result = "\n\n".join(processed_chunks)
+    return result
 
 @dataclass
 class Patch:
@@ -688,6 +726,8 @@ class Patch:
         Raises:
             IOError: If there's an error writing the file
         """
+    logger.debug(f"Writing patch {self.version} to {patch_dir}")
+
     # Ensure the patch directory exists
     FileSystem.ensure_directory(patch_dir)
 
@@ -716,7 +756,9 @@ class Patch:
     content.append("```")
 
     # Write to file
-    FileSystem.write_file(filename, "\n".join(content))
+    full_content = "\n".join(content)
+    FileSystem.write_file(filename, full_content)
+    logger.info(f"Wrote patch {self.version} to {filename}")
     return filename
 
   @classmethod
@@ -734,42 +776,53 @@ class Patch:
             ValueError: If the patch file is invalid or can't be parsed
             IOError: If there's an error reading the file
         """
-    content = FileSystem.read_file(filename)
+    logger.debug(f"Loading patch from file: {filename}")
 
-    # Extract version from filename
-    version_match = re.search(r"patch-(.+)\.md", os.path.basename(filename))
-    if not version_match:
-      raise ValueError(f"Invalid patch filename: {filename}")
-    version = version_match.group(1)
+    try:
+      content = FileSystem.read_file(filename)
 
-    # Extract description and timestamp
-    description_match = re.search(r"Description: (.+)$", content, re.MULTILINE)
-    timestamp_match = re.search(r"Timestamp: (.+)$", content, re.MULTILINE)
+      # Extract version from filename
+      version_match = re.search(r"patch-(.+)\.md", os.path.basename(filename))
+      if not version_match:
+        error_msg = f"Invalid patch filename: {filename}"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
 
-    description = description_match.group(1) if description_match else ""
-    timestamp = timestamp_match.group(1) if timestamp_match else ""
+      version = version_match.group(1)
 
-    # Extract the diff content
-    diff_match = re.search(r"```diff\n([\s\S]+?)\n```", content)
-    diff_content = diff_match.group(1) if diff_match else ""
+      # Extract description and timestamp
+      description_match = re.search(r"Description: (.+)$", content, re.MULTILINE)
+      timestamp_match = re.search(r"Timestamp: (.+)$", content, re.MULTILINE)
 
-    # Extract the changes
-    changes = []
-    changes_section = re.search(r"## Changes\n\n([\s\S]+?)(?=\n## Diff|\Z)", content)
-    if changes_section:
-      changes_text = changes_section.group(1)
-      change_blocks = re.finditer(r"\* ([A-Z]+): ([^\n]+)(?:\n```\n([\s\S]+?)\n```)?", changes_text)
+      description = description_match.group(1) if description_match else ""
+      timestamp = timestamp_match.group(1) if timestamp_match else ""
 
-      for match in change_blocks:
-        change_type = match.group(1)
-        location = match.group(2)
-        change_content = match.group(3) if match.group(3) else ""
-        changes.append({"type": change_type, "location": location, "content": change_content})
+      # Extract the diff content
+      diff_match = re.search(r"```diff\n([\s\S]+?)\n```", content)
+      diff_content = diff_match.group(1) if diff_match else ""
 
-    # Create and return the patch
-    patch = cls(version, description, diff_content, changes)
-    patch.timestamp = timestamp
-    return patch
+      # Extract the changes
+      changes = []
+      changes_section = re.search(r"## Changes\n\n([\s\S]+?)(?=\n## Diff|\Z)", content)
+      if changes_section:
+        changes_text = changes_section.group(1)
+        change_blocks = re.finditer(r"\* ([A-Z]+): ([^\n]+)(?:\n```\n([\s\S]+?)\n```)?", changes_text)
+
+        for match in change_blocks:
+          change_type = match.group(1)
+          location = match.group(2)
+          change_content = match.group(3) if match.group(3) else ""
+          changes.append({"type": change_type, "location": location, "content": change_content})
+
+      # Create and return the patch
+      patch = cls(version, description, diff_content, changes)
+      patch.timestamp = timestamp
+      logger.debug(f"Successfully loaded patch {version}")
+      return patch
+
+    except Exception as e:
+      logger.error(f"Error loading patch from {filename}: {str(e)}")
+      raise ValueError(f"Error loading patch from {filename}: {str(e)}")
 
 class VersionManager:
 
@@ -786,6 +839,7 @@ class VersionManager:
         Raises:
             IOError: If there's an error reading the base file
         """
+    logger.info(f"Initializing VersionManager with base_file: {base_file}, patch_dir: {patch_dir}")
     self.base_file = base_file
     self.patch_dir = patch_dir
     self.base_content = ""
@@ -797,6 +851,9 @@ class VersionManager:
     # Load base file if it exists
     if FileSystem.file_exists(base_file):
       self.base_content = FileSystem.read_file(base_file)
+      logger.debug(f"Loaded base file: {base_file}")
+    else:
+      logger.debug(f"Base file {base_file} does not exist, starting with empty content")
 
     # Load existing patches
     self.load_patches()
@@ -808,12 +865,19 @@ class VersionManager:
         Raises:
             ValueError: If a patch file is invalid or can't be parsed
         """
+    logger.debug(f"Loading patches from directory: {self.patch_dir}")
     self.patches = []
 
     # Get all patch files
-    patch_files = FileSystem.list_files(self.patch_dir, r"^patch-.*\.md$")
+    try:
+      patch_files = FileSystem.list_files(self.patch_dir, r"^patch-.*\.md$")
+      logger.debug(f"Found {len(patch_files)} patch files")
+    except Exception as e:
+      logger.warning(f"Error listing patch files: {str(e)}")
+      patch_files = []
 
     if not patch_files:
+      logger.debug("No patch files found")
       return
 
     # Sort patches by version
@@ -850,7 +914,10 @@ class VersionManager:
         patch = Patch.from_file(patch_file)
         self.patches.append(patch)
       except Exception as e:
+        logger.error(f"Error loading patch {patch_file}: {e}")
         print(f"Error loading patch {patch_file}: {e}")
+
+    logger.info(f"Loaded {len(self.patches)} patches")
 
   def parse_version(self, version: str) -> Version:
     """
@@ -884,15 +951,22 @@ class VersionManager:
         Raises:
             ValueError: If a patch can't be applied cleanly
         """
+    logger.info(f"Rendering document with {len(self.patches)} patches")
+    start_time = time.time()
+
     current_content = self.base_content
+    logger.debug(f"Starting with base content ({len(current_content)} bytes)")
 
     # Apply each patch sequentially
-    for patch in self.patches:
+    for i, patch in enumerate(self.patches):
+      logger.debug(f"Applying patch {i+1}/{len(self.patches)}: {patch.version}")
+
       # Apply the patch using DiffManager
       try:
         current_content = DiffManager.apply_diff(current_content, patch.diff_content)
       except ValueError as e:
-        print(f"Warning: Failed to apply diff from patch {patch.version}: {e}")
+        logger.warning(f"Failed to apply diff from patch {patch.version}: {e}")
+        logger.info("Falling back to structured changes")
 
         # Fall back to structured changes if diff application fails
         for change in patch.changes:
@@ -903,19 +977,17 @@ class VersionManager:
           if change_type == "ADD":
             # Simple append for fallback
             current_content += f"\n\n## {location}\n\n{content}"
-
-          elif change_type == "REMOVE":
+          elif change_type == "REMOVE" and location in current_content:
             # Basic pattern-based removal
-            if location in current_content:
-              pattern = rf"{re.escape(location)}.*?(?=\n## |\Z)"
-              current_content = re.sub(pattern, "", current_content, flags=re.DOTALL)
-
-          elif change_type == "REPLACE":
+            pattern = rf"{re.escape(location)}.*?(?=\n## |\Z)"
+            current_content = re.sub(pattern, "", current_content, flags=re.DOTALL)
+          elif change_type == "REPLACE" and location in current_content:
             # Basic pattern-based replacement
-            if location in current_content:
-              pattern = rf"{re.escape(location)}.*?(?=\n## |\Z)"
-              current_content = re.sub(pattern, f"{location}\n\n{content}", current_content, flags=re.DOTALL)
+            pattern = rf"{re.escape(location)}.*?(?=\n## |\Z)"
+            current_content = re.sub(pattern, f"{location}\n\n{content}", current_content, flags=re.DOTALL)
 
+    elapsed_time = time.time() - start_time
+    logger.info(f"Document rendering completed in {elapsed_time:.2f}s")
     return current_content
 
   def add_patch(self, version: str, description: str, diff_content: str, changes: List[Dict[str, str]]) -> str:
@@ -934,10 +1006,17 @@ class VersionManager:
         Raises:
             IOError: If there's an error writing the patch file
         """
+    logger.info(f"Adding new patch: version={version}, description='{description}'")
+
     patch = Patch(version, description, diff_content, changes)
-    patch_file = patch.to_file(self.patch_dir)
-    self.patches.append(patch)
-    return patch_file
+
+    try:
+      patch_file = patch.to_file(self.patch_dir)
+      self.patches.append(patch)
+      return patch_file
+    except Exception as e:
+      logger.error(f"Error adding patch: {str(e)}")
+      raise IOError(f"Error adding patch: {str(e)}")
 
   def save_iteration(self, iteration: int) -> str:
     """
@@ -953,9 +1032,12 @@ class VersionManager:
             ValueError: If a patch can't be applied cleanly
             IOError: If there's an error writing the file
         """
+    logger.info(f"Saving iteration {iteration}")
+
     content = self.render()
     output_file = f"article-{iteration}.md"
     FileSystem.write_file(output_file, content)
+    logger.info(f"Iteration {iteration} saved to {output_file}")
     return output_file
 
 class ContentGenerator:
@@ -977,6 +1059,7 @@ class ContentGenerator:
             guidance_manager: Manager for guidance parameters
             context_window_manager: Manager for context window size constraints
         """
+    logger.info("Initializing ContentGenerator")
     self.llm_service = llm_service
     self.template_manager = template_manager or TemplateManager()
     self.guidance_manager = guidance_manager or GuidanceManager()
@@ -1011,7 +1094,13 @@ class ContentGenerator:
             TemplateError: If the template name doesn't exist
             GuidanceError: If the guidance name doesn't exist
         """
-    print(f"Processing node: {source_node.title} (level {source_node.level})")
+    node_info = f"{source_node.title} (level {source_node.level})"
+    logger.info(f"Generating content for {node_info}")
+
+    # Add context for correlation
+    add_log_context("node_title", source_node.title)
+    add_log_context("template", template_name)
+    add_log_context("guidance", guidance_name)
 
     try:
       # Get template and guidance
@@ -1023,15 +1112,27 @@ class ContentGenerator:
       user_prompt = template.format_user_prompt(section_title=source_node.title, source_content=source_node.content, current_article=current_article)
 
       # Generate content using the LLM service
+      logger.debug(f"Calling LLM with max_tokens={max_tokens}, temperature={temperature:.2f}")
+      start_time = time.time()
       completion = self.llm_service.complete(system_prompt, user_prompt, max_tokens, temperature)
+      elapsed_time = time.time() - start_time
+      logger.debug(f"LLM completed in {elapsed_time:.2f}s")
 
       # Parse the LLM response
-      return self._parse_completion(completion, source_node, current_article)
+      result = self._parse_completion(completion, source_node, current_article)
+      logger.info(f"Content generation completed for {node_info}")
+      return result
 
     except Exception as e:
       if isinstance(e, (TemplateError, GuidanceError)):
         raise
+      logger.error(f"Content generation failed: {str(e)}")
       raise ContentGenerationError(f"Content generation failed: {str(e)}") from e
+    finally:
+      # Clean up context
+      add_log_context("node_title", None)
+      add_log_context("template", None)
+      add_log_context("guidance", None)
 
   def _parse_completion(self, completion: str, source_node: DocumentNode, current_article: str) -> Tuple[str, str, List[Dict[str, str]]]:
     """
@@ -1047,13 +1148,15 @@ class ContentGenerator:
             - enhanced_article: The complete article with new content integrated
             - changes: List of changes describing what was modified
         """
+    logger.debug("Parsing LLM completion")
+
     sections = completion.split("\n\n", 1)
     if len(sections) > 1:
       description = sections[0].strip()
 
       # Check if this is a SKIP operation
       if "SKIP" in description.upper():
-        print(f"Skipping content from '{source_node.title}': {description}")
+        logger.info(f"Skipping content from '{source_node.title}': {description}")
         return description, current_article, [{"type": "SKIP", "location": source_node.title, "content": ""}]
 
       content_sections = sections[1].split("Changes:", 1)
@@ -1075,27 +1178,31 @@ class ContentGenerator:
 
           # If we find a SKIP operation, return immediately with no changes
           if operation == "SKIP":
-            print(f"Skipping content from '{source_node.title}': {description}")
+            logger.info(f"Skipping content from '{source_node.title}': {description}")
             return description, current_article, [{"type": "SKIP", "location": location, "content": ""}]
       else:
         # Couldn't parse changes section, use the entire content as the article
+        logger.warning("Could not parse changes section, using entire content as article")
         enhanced_article = sections[1].strip()
         changes = [{"type": "ADD", "location": source_node.title, "content": f"Content from {source_node.title}"}]
     else:
       # Check if this is a simple SKIP response
       if "SKIP" in completion.upper():
-        print(f"Skipping content from '{source_node.title}': {completion.strip()}")
+        logger.info(f"Skipping content from '{source_node.title}': {completion.strip()}")
         return completion.strip(), current_article, [{"type": "SKIP", "location": source_node.title, "content": ""}]
 
       # Fallback if we couldn't parse the response
+      logger.warning("Could not parse completion into sections, using fallback parsing")
       description = f"Update from {source_node.title}"
       enhanced_article = completion.strip()
       changes = [{"type": "ADD", "location": source_node.title, "content": f"Content from {source_node.title}"}]
 
     # If there are no changes detected but content is different, add a default change
     if not changes and enhanced_article != current_article:
+      logger.debug("No changes detected but content differs, adding default change")
       changes = [{"type": "ADD", "location": source_node.title, "content": f"Content from {source_node.title}"}]
 
+    logger.debug(f"Parsed {len(changes)} changes from completion")
     return description, enhanced_article, changes
 
 # -----------------------------------------------------------------------------
@@ -1128,12 +1235,17 @@ class Application:
             Raises:
                 ConfigurationError: If the configuration is invalid
             """
+      logger.info("Initializing KnowledgeBaseGenerator")
       self.config = config
       self.template_manager = template_manager or TemplateManager()
       self.guidance_manager = guidance_manager or GuidanceManager()
 
       # Initialize components based on configuration
-      self._initialize_components()
+      try:
+        self._initialize_components()
+      except Exception as e:
+        logger.error(f"Component initialization failed: {str(e)}")
+        raise ConfigurationError(f"Failed to initialize components: {str(e)}")
 
       # Content generator will be initialized when needed
       self.content_generator = content_generator
@@ -1152,8 +1264,9 @@ class Application:
           if template_file:
             try:
               loaded_templates = self.template_manager.load_template_file(template_file)
-              print(f"Loaded templates: {', '.join(loaded_templates)}")
+              logger.info(f"Loaded templates: {', '.join(loaded_templates)}")
             except TemplateError as e:
+              logger.warning(f"Failed to load templates: {str(e)}")
               print(f"Warning: Failed to load templates: {str(e)}")
 
         # Load guidance if specified
@@ -1161,8 +1274,9 @@ class Application:
           if "file" in self.config["guidance"] and self.config["guidance"]["file"]:
             try:
               loaded_guidance = self.guidance_manager.load_guidance_file(self.config["guidance"]["file"])
-              print(f"Loaded guidance profiles: {', '.join(loaded_guidance)}")
+              logger.info(f"Loaded guidance profiles: {', '.join(loaded_guidance)}")
             except GuidanceError as e:
+              logger.warning(f"Failed to load guidance: {str(e)}")
               print(f"Warning: Failed to load guidance: {str(e)}")
           elif "inline" in self.config["guidance"]:
             # Add inline guidance
@@ -1220,6 +1334,7 @@ class Application:
         return cast(LLMService, None)
 
       except Exception as e:
+        logger.error(f"Failed to create LLM service: {str(e)}")
         raise ConfigurationError(f"Failed to create LLM service: {str(e)}")
 
     def generate(self) -> str:
@@ -1234,6 +1349,7 @@ class Application:
             """
       # This implementation will be completed when source module is created
       # For now, it's a placeholder to maintain the API
+      logger.info("Generate method called (placeholder implementation)")
       return "Article content placeholder"
 
     def render(self) -> str:
@@ -1247,6 +1363,8 @@ class Application:
                 ValueError: If a patch can't be applied cleanly
                 ConfigurationError: If configuration is invalid
             """
+      logger.info("Rendering document from patches")
+
       try:
         base_file = self.config["render"].get("base_file", "base.md")
         patch_dir = self.config["render"].get("patch_dir", "patches")
@@ -1261,12 +1379,13 @@ class Application:
         output_file = self.config["output"].get("file")
         if output_file:
           FileSystem.write_file(output_file, content)
-          print(f"Output saved to: {output_file}")
+          logger.info(f"Output saved to: {output_file}")
 
         return content
 
       except Exception as e:
         if not isinstance(e, ConfigurationError):
+          logger.error(f"Rendering failed: {str(e)}")
           raise ConfigurationError(f"Rendering failed: {str(e)}")
         raise
 
@@ -1284,10 +1403,10 @@ class Application:
       epilog="""
 Examples:
   # Render patches to produce an article
-  python -m .artifact render --base-file base.md --patch-dir patches --output-file article.md
+  python -m tools.kb.artifact render --base-file base.md --patch-dir patches --output-file article.md
 
   # Use custom templates
-  python -m .artifact render --template-file templates.json --template-name technical
+  python -m tools.kb.artifact render --template-file templates.json --template-name technical
 
 Environment Variables:
   - AZURE_OPENAI_ENDPOINT: URL for Azure OpenAI endpoint
@@ -1321,6 +1440,12 @@ Environment Variables:
     parser.add_argument("--base-file", help="Base file for patch application (for render action)")
     parser.add_argument("--patch-dir", help="Directory containing patches (for render action)")
 
+    # Add logging-specific arguments
+    parser.add_argument("--log-level", choices=["TRACE", "DEBUG", "INFO", "WARNING", "ERROR"], help="Set logging level")
+    parser.add_argument("--log-format", choices=["text", "json"], help="Set log output format")
+    parser.add_argument("--log-output", choices=["console", "file", "both"], help="Set log output destination")
+    parser.add_argument("--log-file", help="Set log file name (when output is file or both)")
+
     return parser
 
   @staticmethod
@@ -1339,6 +1464,7 @@ Environment Variables:
         Raises:
             ConfigurationError: If the format is invalid
         """
+    logger.debug(f"Parsing inline guidance: {guidance_str}")
     guidance_params = {}
 
     try:
@@ -1347,14 +1473,18 @@ Environment Variables:
         key, value = pair.split("=", 1)
         guidance_params[key.strip()] = value.strip()
     except ValueError:
-      raise ConfigurationError(f"Invalid guidance parameter format: {guidance_str}")
+      error_msg = f"Invalid guidance parameter format: {guidance_str}"
+      logger.error(error_msg)
+      raise ConfigurationError(error_msg)
 
     # Validate required parameters
     required_params = ["style", "audience", "structure", "formatting", "constraints"]
     missing_params = [param for param in required_params if param not in guidance_params]
 
     if missing_params:
-      raise ConfigurationError(f"Missing guidance parameters: {', '.join(missing_params)}")
+      error_msg = f"Missing guidance parameters: {', '.join(missing_params)}"
+      logger.error(error_msg)
+      raise ConfigurationError(error_msg)
 
     return guidance_params
 
@@ -1408,6 +1538,7 @@ Environment Variables:
 
     except Exception as e:
       if not isinstance(e, ConfigurationError):
+        logger.error(f"Failed to create configuration: {str(e)}")
         raise ConfigurationError(f"Failed to create configuration: {str(e)}")
       raise
 
@@ -1421,9 +1552,21 @@ Environment Variables:
         2. Creates the appropriate components
         3. Performs the requested action
         """
-    # Parse command-line arguments
+    # Create a unique correlation ID for this run
+    correlation_id = f"kb-artifact-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    set_correlation_id(correlation_id)
+
+    # Parse command-line arguments first to get logging configuration
     parser = Application.create_cli_parser()
     args = parser.parse_args()
+
+    # Configure logging based on arguments
+    from ._utils.logger import configure_logging
+    configure_logging(level=args.log_level, format_type=args.log_format, output=args.log_output, filename=args.log_file)
+
+    # Get a logger for the application
+    logger = get_logger("kb.artifact.application")
+    logger.info(f"KB Artifact operation starting: {args.action}")
 
     try:
       # Extract full configuration
@@ -1434,16 +1577,21 @@ Environment Variables:
 
       # Perform the requested action
       if config["action"] == "render":
+        logger.info("Rendering document from patches")
         output = generator.render()
 
         # Print to stdout if no output file specified
         if not config["output"].get("file"):
           print(output)
 
+      logger.info("KB Artifact operation completed successfully")
+
     except ConfigurationError as e:
+      logger.error(f"Configuration error: {str(e)}")
       print(f"Configuration error: {str(e)}", file=sys.stderr)
       sys.exit(1)
     except Exception as e:
+      logger.error(f"Unhandled exception: {str(e)}", exc_info=True)
       print(f"Error: {str(e)}", file=sys.stderr)
       import traceback
       traceback.print_exc(file=sys.stderr)
