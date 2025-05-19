@@ -56,7 +56,7 @@ to generate knowledge base sections, finally utilizing utilities to persist resu
 
 ### Coding Style
 
-- **Python Version**: Requires Python 3.10+ for compatibility with typing features
+- **Python Version**: Requires Python 3.12+ for compatibility with typing features
 - **Type Annotations**: Use comprehensive typing with optional static analysis
 - **Documentation**: Every function, class, and module requires docstrings with:
   - Purpose description
@@ -79,14 +79,13 @@ to generate knowledge base sections, finally utilizing utilities to persist resu
   2. Standard library imports
   3. Third-party imports
   4. Local application imports
-- **Code Formatting**: Follow PEP 8 guidelines for spacing and formatting
+- **Code Formatting**: Custom Styling will be applied.
 
 ### Additional Directives
 
 - **Error Handling**: Propagate exceptions to appropriate layers; avoid silent failures
 - **Dependency Injection**: Use explicit dependency injection for testability
 - **Interface Contracts**: Define clear protocols for cross-layer interactions
-- **Performance**: Prioritize memory efficiency and streaming for large documents
 - **Maintainability**: Prioritize readability and clear intent over cleverness
 
 When adding new functionality:
@@ -2569,7 +2568,6 @@ Environment Variables:
 
     # Output options
     parser.add_argument("--output-format", choices=["markdown", "html"], default="markdown", help="Output format (default: markdown)")
-
     parser.add_argument("--output-file", "-o", help="Output file path (stdout if not specified)")
 
     # Processing options
@@ -2577,34 +2575,24 @@ Environment Variables:
 
     # Guidance options
     parser.add_argument("--guidance-file", help="Path to JSON file containing guidance profiles")
-
     parser.add_argument("--guidance-name", help="Name of guidance profile to use (default: default)")
-
     parser.add_argument("--guidance-inline", help="Inline guidance parameters (format: style=value,audience=value,...)")
 
     # Template options
     parser.add_argument("--template-file", help="Path to JSON file containing prompt templates")
-
     parser.add_argument("--template-name", help="Name of template to use (default: default)")
 
     # LLM options
     parser.add_argument("--azure-endpoint", help="Azure OpenAI API endpoint URL (or set AZURE_OPENAI_ENDPOINT env variable)")
-
     parser.add_argument("--azure-key", help="Azure OpenAI API key (or set AZURE_OPENAI_KEY env variable)")
-
     parser.add_argument("--azure-deployment", help="Azure OpenAI deployment name (or set AZURE_OPENAI_DEPLOYMENT env variable)")
-
     parser.add_argument("--temperature", type=float, default=0.7, help="Temperature for generation (0.0 to 1.0, default: 0.7)")
-
     parser.add_argument("--max-retries", type=int, default=3, help="Maximum number of retry attempts for API calls (default: 3)")
-
     parser.add_argument("--retry-delay", type=float, default=1.0, help="Base delay between retries in seconds (default: 1.0)")
-
     parser.add_argument("--mock-llm", action="store_true", help="Use mock LLM service instead of Azure OpenAI")
 
     # Version control options (for render action)
     parser.add_argument("--base-file", help="Base file for patch application (for render action)")
-
     parser.add_argument("--patch-dir", help="Directory containing patches (for render action)")
 
     return parser
