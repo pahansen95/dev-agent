@@ -1,12 +1,6 @@
 """
-# Knowledge Base Generator - Source Module
+# Knowledge Base Sources
 
-A module for processing source documents for knowledge base generation through
-parsing, streaming, and structured representation.
+A KB Source is some unstructured textual document that serves as a source of information for generating Knowledge Base Artifacts.
 
-This module handles:
-- Document representation and metadata
-- Stream-based document processing
-- Markdown parsing and hierarchical structure
-- Document tree construction and traversal
 """
