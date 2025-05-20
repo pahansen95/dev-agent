@@ -1,63 +1,29 @@
 """
-# Knowledge Base Generator
+# Knowledge Base
 
-A domain-agnostic tool for procedurally generating knowledge base documentation by
-processing source material and applying intelligent content transformations.
+A domain-agnostic tool for managing a knowledge base.
 
 ## Overview
 
-This application automatically transforms comprehensive reference material into
-structured knowledge base articles through an iterative, LLM-assisted process. It analyzes source
-content across multiple documents, determines optimal integration points, and creates structured
-patches that progressively build a complete knowledge base.
+This application has features including:
 
-Key capabilities:
-- Multi-document processing with document-aware content organization
-- Memory-efficient streaming for large file handling
-- Markdown document parsing and hierarchical representation
-- Intelligent content selection and integration
-- Structured version control with diff-based patches
-- LLM-powered content generation and refinement
-- Deterministic and reproducible knowledge base creation
+- Iterative generation of well formed KB Artifacts from source documentation
+- Parsing & Rendering of KB Artifacts
 
 ## Architectural Design
 
 The application follows a layered architecture with clear boundaries:
 
-1. **Document Processing Layer**
-   - Parses multiple source documents into a unified tree structure
-   - Maintains document boundaries and metadata
-   - Manages document hierarchies and content extraction
-   - Provides efficient document traversal mechanisms
-
-2. **Content Management Layer**
-   - Implements configurable templates and guidance for domain-agnostic content
-   - Handles content generation through LLM integration
-   - Implements versioning with structured patch management
-   - Controls content transformations and diff generation
-
-3. **Utilities Layer**
-   - Provides cross-cutting functionality like LLM services
-   - Handles file operations and streaming I/O
-   - Implements diff management and patch handling
-   - Ensures memory-efficient processing for large documents
-
-4. **Application Layer**
-   - Orchestrates document processing and content management
-   - Provides streamlined CLI with flexible input handling
-   - Manages configuration and processing directives
-   - Controls overall workflow across multiple documents
-
-Data flows through these layers in a single direction: the application layer coordinates
-document processing to extract content from multiple sources, then uses content management
-to generate knowledge base sections, finally utilizing utilities to persist results.
+1. **Artifact Layer**: Handling the iterative generation & rendering of KB artifacts.
+2. **Core Layer**: Providing cross cutting functionality intrinsic to the App (e.g. The KB Artifact, CLI Interface & Core Types).
+3. **Utilities Layer**: Providing cross cutting functionality extrinsic to the App (e.g. The OS & External Systems).
 
 ## Contributor Guidelines
 
 ### Coding Style
 
 - **Python Version**: Requires Python 3.12+ for compatibility with typing features
-- **Type Annotations**: Use comprehensive typing with optional static analysis
+- **Type Annotations**: Use comprehensive typing.
 - **Documentation**: Every function, class, and module requires docstrings with:
   - Purpose description
   - Parameter documentation with types
@@ -72,7 +38,7 @@ to generate knowledge base sections, finally utilizing utilities to persist resu
 
 ### Structural Layout
 
-- **Organization**: Group related functionality in namespaces (classes)
+- **Organization**: Group related functionality in modules; breakout to sub-packages when individual modules become overloaded
 - **Modularity**: Maintain clear boundaries between layers
 - **Import Order**:
   1. Future imports
@@ -87,13 +53,13 @@ to generate knowledge base sections, finally utilizing utilities to persist resu
 - **Dependency Injection**: Use explicit dependency injection for testability
 - **Interface Contracts**: Define clear protocols for cross-layer interactions
 - **Maintainability**: Prioritize readability and clear intent over cleverness
+- **Coding**: Be declarative; if imperative code is required then document it declaratively.
 
 When adding new functionality:
 1. Identify the appropriate layer
-2. Implement as a class or method within existing namespaces
-3. Update interfaces as needed, maintaining backward compatibility
-4. Add comprehensive docstrings and type annotations
-5. Consider error cases and edge conditions
+2. Implement as a class or method within an existing module or propose a new module/sub-package.
+3. Add comprehensive docstrings and type annotations
+4. Fail fast & handle minimal edge cases
 
 This architecture ensures separation of concerns while maintaining a cohesive application
 that can evolve to handle diverse document sources and knowledge domains.

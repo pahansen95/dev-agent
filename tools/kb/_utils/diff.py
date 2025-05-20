@@ -7,10 +7,10 @@ Provides functionality for creating and applying diffs between text content.
 import difflib
 import re
 
-from .logger import get_logger
+import logging
 
 # Get a logger for this module
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 logger.debug("Initializing DiffManager utility")
 
 class DiffManager:

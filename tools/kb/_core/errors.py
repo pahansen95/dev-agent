@@ -1,12 +1,12 @@
 """
-Error definitions for the Knowledge Base Generator.
+Error definitions for the Knowledge Base.
 
-This module defines all exceptions used throughout the KB Generator tool.
+This module defines all exceptions used throughout the KB tool.
 """
 
 class KBError(Exception):
 
-  """Base exception class for all KB Generator errors."""
+  """Base exception class for all KB errors."""
   pass
 
 class ConfigurationError(KBError):

@@ -4,17 +4,17 @@ Version-related type definitions for Knowledge Base Generator.
 Centralizes type definitions related to versioning, patches, and version control.
 """
 
-from typing import TypedDict, List, Dict, Optional
+from dataclasses import dataclass
 
-
-class Version(TypedDict):
+@dataclass
+class Version:
     """Type for version information."""
     major: int
     minor: int
     patch: int
 
-
-class PatchInfo(TypedDict):
+@dataclass
+class PatchInfo:
     """Information about a patch."""
     version: str
     description: str
